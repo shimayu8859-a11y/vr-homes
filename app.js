@@ -497,7 +497,7 @@ function applyRoleUI(){
   if(document.getElementById('prof-mei')) document.getElementById('prof-mei').value=parts[1]||'';
   document.getElementById('tab-admin').classList.toggle('hidden',!isAdmin());
   document.getElementById('tab-master').classList.toggle('hidden',!isMaster());
-  document.getElementById('mp-nav-code').classList.toggle('hidden',!isRegular());
+  document.getElementById('mp-nav-code').classList.remove('hidden'); // 全ユーザーに表示
   document.getElementById('nav-admin-btn').classList.toggle('hidden',!isAdmin());
   document.getElementById('admin-email-display').textContent=u.email;
   refreshStats();
@@ -650,21 +650,36 @@ function doLogout(){
 function submitCode(){
   const code=(document.getElementById('code-input')||{}).value?.trim()||'';
   const msgEl=document.getElementById('code-msg');
-  const okAdmin=code===ADMIN_CODE;
-  const okMaster=code===MASTER_CODE;
-  const ok=okAdmin||okMaster;
-  msgEl.style.cssText=`display:block;background:${ok?'rgba(22,163,74,.15)':'rgba(220,38,38,.15)'};border:1px solid ${ok?'rgba(22,163,74,.3)':'rgba(220,38,38,.3)'};color:${ok?'var(--green)':'var(--red)'};border-radius:var(--r-md);padding:9px 13px;font-size:13px;margin-bottom:14px`;
+  const okAdmin  = code===ADMIN_CODE;
+  const okMaster = code===MASTER_CODE;
+  const okAd     = code.toLowerCase()===AD_SECRET_CODE.toLowerCase();
+  const ok = okAdmin||okMaster||okAd;
+
+  const showMsg=(text,isOk)=>{
+    msgEl.style.cssText=`display:block;background:${isOk?'rgba(22,163,74,.15)':'rgba(220,38,38,.15)'};border:1px solid ${isOk?'rgba(22,163,74,.3)':'rgba(220,38,38,.3)'};color:${isOk?'var(--green)':'var(--red)'};border-radius:var(--r-md);padding:9px 13px;font-size:13px;margin-bottom:14px`;
+    msgEl.textContent=text;
+    setTimeout(()=>{msgEl.style.display='none';},3000);
+  };
+
+  if(okAd){
+    // 広告管理解放
+    localStorage.setItem(AD_UNLOCK_KEY,'yes');
+    document.getElementById('code-input').value='';
+    showMsg('🔓 広告管理が解放されました！マスターパネルで確認できます',true);
+    if(isMaster()){_showAdTab();renderAdManagement();}
+    return;
+  }
   if(ok){
     const newRole=okMaster?'master':'admin';
     currentUser.role=newRole;
     const s=userStore.find(u=>u.email===currentUser.email);if(s) s.role=newRole;
-    msgEl.textContent=`✓ ${okMaster?'マスター':'管理者'}として認証されました！`;
+    showMsg(`✓ ${okMaster?'マスター':'管理者'}として認証されました！`,true);
     applyRoleUI();
-    if(okMaster) renderFieldManagement();
-    setTimeout(()=>{msgEl.style.display='none';document.getElementById('code-input').value='';},3000);
+    if(okMaster){renderFieldManagement();if(isAdUnlocked()){_showAdTab();renderAdManagement();}}
+    setTimeout(()=>{document.getElementById('code-input').value='';guardedScreen(okMaster?'master':'admin');},1500);
   } else {
-    msgEl.textContent='コードが正しくありません。';
-    setTimeout(()=>msgEl.style.display='none',3000);
+    showMsg('コードが正しくありません。',false);
+    document.getElementById('code-input').value='';
   }
 }
 
@@ -1817,8 +1832,8 @@ function injectInlineAds() {
 ══════════════════════════════════════ */
 const AD_POPUP_SETTING_KEY = 'vr_ad_popup_enabled';
 function isAdPopupEnabled() {
-  try { const v = localStorage.getItem(AD_POPUP_SETTING_KEY); return v === null ? true : v === 'true'; }
-  catch(e) { return true; }
+  try { const v = localStorage.getItem(AD_POPUP_SETTING_KEY); return v === 'true'; } // デフォルトOFF
+  catch(e) { return false; }
 }
 function setAdPopupEnabled(flag) {
   localStorage.setItem(AD_POPUP_SETTING_KEY, String(flag));

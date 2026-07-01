@@ -775,3 +775,116 @@ select.finput{cursor:pointer}
   #ad-side-left,#ad-side-right{display:none!important}
   #ad-side-wrap{display:block!important}
 }
+
+/* ══════════════════════════════════════
+   スマホ表示改善パッチ
+══════════════════════════════════════ */
+@media(max-width:768px){
+  /* タブバー：アイコン＋テキストを小さく */
+  .tab-bar{padding:0 2px}
+  .tab{padding:10px 8px 8px;font-size:10px;gap:2px;flex:1;justify-content:center;text-align:center;flex-direction:column;align-items:center}
+  .tab i{font-size:16px}
+
+  /* NAV */
+  .nav{top:40px;padding:0 12px;height:48px}
+  .logo{font-size:15px}
+
+  /* HERO */
+  .hero{padding:28px 14px 22px}
+  .hero-title{font-size:20px}
+  .search-bar{padding:14px 14px}
+  .search-row{gap:8px}
+  .search-field{min-width:0;width:100%}
+  .finput{font-size:14px;padding:10px 12px} /* タップしやすく */
+
+  /* カードグリッド */
+  .card-grid{grid-template-columns:1fr 1fr;gap:10px;padding:12px}
+  .prop-card{border-radius:10px}
+  .prop-img{height:110px}
+  .prop-body{padding:9px 10px 7px}
+  .prop-price{font-size:14px}
+  .prop-name{font-size:12px}
+  .prop-loc{font-size:10px}
+  .prop-footer{padding:6px 10px}
+
+  /* マイページ */
+  .mypage-wrap{flex-direction:column}
+  .mypage-sidebar{
+    width:100%;border-right:none;border-bottom:1px solid var(--border);
+    padding:10px 8px;
+    display:flex;flex-direction:row;overflow-x:auto;gap:4px;
+  }
+  .mypage-sidebar>div:first-child{display:none} /* アバター非表示 */
+  .mypage-sidebar>div:nth-child(2){display:none} /* 名前非表示 */
+  .mp-nav-item{
+    padding:8px 12px;white-space:nowrap;border-radius:20px;
+    font-size:12px;flex-shrink:0;
+  }
+  .mypage-main{padding:16px 14px}
+
+  /* 物件詳細モーダル */
+  .pd-overlay{padding:0}
+  .pd-modal{border-radius:0;min-height:100vh}
+  .pd-slider{height:240px}
+  .pd-body{grid-template-columns:1fr;max-height:none}
+  .pd-main{padding:16px 14px;max-height:none}
+  .pd-side{border-left:none;border-top:1px solid var(--border);padding:14px}
+  .pd-price{font-size:20px}
+  .pd-info-grid{grid-template-columns:1fr 1fr}
+
+  /* 管理者・マスター */
+  .admin-wrap{flex-direction:column}
+  .admin-sidebar{
+    width:100%;padding:8px 10px;
+    display:flex;flex-direction:row;overflow-x:auto;gap:4px;
+  }
+  .admin-sidebar .admin-sidebar-title{display:none}
+  .admin-sidebar .stat-mini{display:none}
+  .admin-nav-item{
+    padding:7px 12px;white-space:nowrap;border-radius:20px;
+    font-size:11px;flex-shrink:0;
+  }
+  .admin-main{padding:14px}
+  .add-form-grid{grid-template-columns:1fr}
+  .stat-card-grid{grid-template-columns:1fr 1fr}
+
+  /* マップ */
+  .map-wrap{flex-direction:column;height:auto}
+  .map-sidebar{width:100%;max-height:200px}
+  .map-area{height:50vh}
+
+  /* LP sections */
+  .lp-section{padding:36px 14px}
+  .lp-title{font-size:19px;margin-bottom:24px}
+  .lp-steps{flex-direction:column;gap:10px}
+  .lp-step-arrow{transform:rotate(90deg);padding:4px 0;font-size:18px}
+  .lp-features-grid{grid-template-columns:1fr 1fr;gap:10px}
+  .lp-feat{padding:18px 14px}
+  .lp-stats-inner{gap:0;flex-wrap:wrap}
+  .lp-stat-item{padding:12px 16px;min-width:50%}
+  .lp-stat-divider{display:none}
+  .lp-stat-num{font-size:28px}
+
+  /* 広告（下部） */
+  #top-bottom-ads>div:last-child{grid-template-columns:1fr 1fr!important}
+
+  /* ログイン */
+  #login-gate{padding:16px 12px}
+  .login-card{padding:24px 16px}
+  .login-title{font-size:22px}
+
+  /* フッター */
+  .lp-footer-inner{flex-direction:column;gap:8px;text-align:center}
+
+  /* ボタン全般をタップしやすく */
+  .btn{min-height:36px}
+  .lbtn{padding:14px}
+}
+
+@media(max-width:390px){
+  .card-grid{grid-template-columns:1fr;padding:10px}
+  .lp-features-grid{grid-template-columns:1fr}
+  .tab{font-size:9px;padding:9px 5px 7px}
+  .hero-title{font-size:18px}
+  #top-bottom-ads>div:last-child{grid-template-columns:1fr!important}
+}

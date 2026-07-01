@@ -483,15 +483,19 @@
       </div>
       <div id="mp-code" style="display:none">
         <h2 style="font-size:18px;font-weight:800;margin-bottom:8px;color:var(--navy)">コード入力</h2>
+        <p style="font-size:13px;color:#64748b;margin-bottom:18px;line-height:1.7">
+          特別なコードを入力すると、追加機能が解放されます。
+        </p>
         <div class="card" style="max-width:380px">
           <div class="field">
-            <div class="flabel">管理者コード <span class="req">*</span></div>
+            <div class="flabel">シークレットコード <span class="req">*</span></div>
             <input class="finput" id="code-input" type="password" placeholder="コードを入力"
-              style="letter-spacing:.2em;font-size:18px" onkeydown="if(event.key==='Enter')submitCode()">
+              style="letter-spacing:.15em;font-size:16px;text-align:center"
+              onkeydown="if(event.key==='Enter')submitCode()">
           </div>
           <div id="code-msg" style="display:none;border-radius:var(--r-md);padding:9px 13px;font-size:13px;margin-bottom:14px"></div>
           <button class="btn btn-p" onclick="submitCode()" style="width:100%;padding:11px;justify-content:center;font-size:13px">
-            <i class="ti ti-check"></i> 認証する
+            <i class="ti ti-lock-open"></i> 解除する
           </button>
         </div>
       </div>

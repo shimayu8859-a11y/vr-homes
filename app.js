@@ -973,8 +973,8 @@ function showScreen(id){
   document.getElementById('s-'+id).classList.add('active');
   const tab=document.getElementById('tab-'+id);if(tab) tab.classList.add('active');
   window.scrollTo(0,0);
-  // タブ移動ごとに広告ポップアップ
-  showAdPopup();
+  // 広告ポップアップ（解放済み＆ONの場合のみ）
+  if(isAdUnlocked() && isAdPopupEnabled()) showAdPopup();
 }
 function guardedScreen(id){
   if(!isLoggedIn){document.getElementById('login-gate').classList.remove('hidden');return;}
@@ -2034,10 +2034,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   `;
   document.head.appendChild(adStyle);
-  // TOP下部に広告を挿入
-  injectSideAds();
-  // 初回ポップアップ（3秒後）
-  setTimeout(showAdPopup, 3000);
+  // 広告はデフォルト完全非表示（zakoshiコードで解放後のみ表示）
+  // injectSideAds();
+  // setTimeout(showAdPopup, 3000);
 });
 
 fetchUsers().then(()=>fetchAndRenderProps().then(()=>{

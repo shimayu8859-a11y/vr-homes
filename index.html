@@ -1,0 +1,903 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>VR Homes — VR内見不動産サイト</title>
+
+<!-- PWA -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#2563eb">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="VR Homes">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<!-- OGP -->
+<meta property="og:title" content="VR Homes — VR内見不動産">
+<meta property="og:description" content="自宅から360° VR内見できる不動産サービス">
+<meta property="og:type" content="website">
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="site.css">
+<style>
+  /* PWA インストールバナー */
+  #pwa-banner{
+    position:fixed;bottom:0;left:0;right:0;z-index:9000;
+    background:linear-gradient(135deg,#1e3a6e,#1e1b4b);
+    border-top:1px solid rgba(255,255,255,.12);
+    padding:12px 16px;display:none;align-items:center;gap:12px;
+    box-shadow:0 -4px 24px rgba(0,0,0,.3);
+  }
+  #pwa-banner.show{display:flex}
+  #pwa-banner .pwa-icon{
+    width:44px;height:44px;border-radius:10px;flex-shrink:0;
+    background:linear-gradient(135deg,#2563eb,#7c3aed);
+    display:flex;align-items:center;justify-content:center;
+    font-size:22px;color:#fff;
+  }
+  #pwa-banner .pwa-text{flex:1;min-width:0}
+  #pwa-banner .pwa-text strong{display:block;font-size:13px;font-weight:800;color:#fff;margin-bottom:2px}
+  #pwa-banner .pwa-text span{font-size:11px;color:rgba(255,255,255,.6)}
+  #pwa-banner .pwa-install{
+    background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;
+    border:none;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:700;
+    cursor:pointer;white-space:nowrap;font-family:inherit;
+    box-shadow:0 2px 8px rgba(37,99,235,.4);flex-shrink:0;
+  }
+  #pwa-banner .pwa-close{
+    background:none;border:none;color:rgba(255,255,255,.4);
+    font-size:18px;cursor:pointer;padding:4px;flex-shrink:0;
+  }
+</style>
+</head>
+<body>
+
+<!-- ══════ LOGIN ══════ -->
+<div id="login-gate">
+  <div class="login-bg-orb login-bg-orb1"></div>
+  <div class="login-bg-orb login-bg-orb2"></div>
+  <div class="login-bg-orb login-bg-orb3"></div>
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="login-logo-icon"><i class="ti ti-building"></i></div>
+      <div class="login-title">VR Homes</div>
+      <div class="login-sub">VR内見不動産サービス</div>
+    </div>
+    <div class="login-tabs">
+      <button id="gatab-login" class="login-tab on" onclick="switchGateAuth('login')">ログイン</button>
+      <button id="gatab-reg"   class="login-tab"    onclick="switchGateAuth('reg')">新規登録</button>
+    </div>
+    <div class="gate-msg" id="gate-msg"></div>
+    <div id="gate-form">
+      <div class="lfield">
+        <label>メールアドレス</label>
+        <input class="linput" id="g-email" type="text" placeholder="example@email.com" autocomplete="username"
+          onkeydown="handleFormKey(event,'g-pass')">
+      </div>
+      <div class="lfield">
+        <label>パスワード</label>
+        <div class="pass-wrap">
+          <input class="linput" id="g-pass" type="password" placeholder="••••••••" autocomplete="current-password"
+            onkeydown="if(event.key==='Enter')gateLogin()">
+          <button class="eye-btn" id="g-eye" type="button" onclick="toggleGateEye()"><i class="ti ti-eye"></i></button>
+        </div>
+      </div>
+      <div style="text-align:right;font-size:11px;color:#93c5fd;cursor:pointer;margin-bottom:20px">パスワードをお忘れですか？</div>
+      <button class="lbtn" type="button" onclick="gateLogin()">
+        <i class="ti ti-login"></i> ログイン
+      </button>
+    </div>
+    <div class="login-switch" id="gate-switch-hint">
+      アカウントをお持ちでない方は <a onclick="switchGateAuth('reg')">新規登録</a>
+    </div>
+    <div class="login-demo">
+      <i class="ti ti-info-circle" style="flex-shrink:0;margin-top:1px"></i>
+      <span>デモ: <strong>demo@vrhomes.jp</strong> / <strong>demo1234</strong></span>
+    </div>
+  </div>
+  <div class="login-copy">© 2025 VR Homes. All rights reserved.</div>
+</div>
+
+<!-- TAB BAR -->
+<div class="tab-bar">
+  <div class="tab active" id="tab-top"    onclick="guardedScreen('top')"><i class="ti ti-home"></i>トップ</div>
+  <div class="tab"        id="tab-map"    onclick="guardedScreen('map')"><i class="ti ti-map-pin"></i>マップ</div>
+  <div class="tab"        id="tab-mypage" onclick="guardedScreen('mypage')"><i class="ti ti-user"></i>マイページ</div>
+  <div class="tab hidden" id="tab-admin"  onclick="guardedScreen('admin')"><i class="ti ti-settings"></i>管理者</div>
+  <div class="tab hidden" id="tab-master" onclick="guardedScreen('master')"><i class="ti ti-crown"></i>マスター</div>
+</div>
+
+<!-- ══════ TOP ══════ -->
+<div class="screen active" id="s-top">
+  <nav class="nav">
+    <div class="logo" onclick="guardedScreen('top')">
+      <div class="logo-icon"><i class="ti ti-building"></i></div>VR<span class="logo-dot">.</span>Homes
+    </div>
+    <div class="nav-links">
+      <span class="nl on">物件を探す</span>
+      <span class="nl" onclick="guardedScreen('map')">マップで探す</span>
+    </div>
+    <div class="nav-r">
+      <button class="btn btn-sm" onclick="guardedScreen('mypage')"><i class="ti ti-user"></i>マイページ</button>
+      <button class="btn btn-p btn-sm hidden" id="nav-admin-btn" onclick="guardedScreen('admin')"><i class="ti ti-settings"></i>管理者</button>
+    </div>
+  </nav>
+
+  <!-- HERO -->
+  <div class="hero">
+    <div class="hero-particles" id="hero-particles"></div>
+    <div style="max-width:960px;margin:0 auto;position:relative;z-index:1">
+      <div class="hero-eyebrow">
+        <span class="hero-eyebrow-dot"></span>
+        VR対応物件 掲載中
+      </div>
+      <h1 class="hero-title">
+        自宅から、360°<span class="hero-title-accent">VR内見</span>できる<br>不動産サービス
+      </h1>
+      <p class="hero-sub">物件を選んでMeta Quest 3に送信するだけ。移動なしでリアルな内見体験を。</p>
+      <div class="search-bar">
+        <div class="search-row">
+          <div class="search-field">
+            <span class="search-label">エリア・駅名</span>
+            <input class="finput" id="f-search-text" placeholder="渋谷、新宿、池袋など"
+              onkeydown="handleFormKey(event,'f-search-price')" style="padding:8px 11px;font-size:13px">
+          </div>
+          <div class="search-field">
+            <span class="search-label">家賃上限（万円）</span>
+            <input class="finput" type="number" id="f-search-price" placeholder="例: 10" min="1"
+              onkeydown="handleFormKey(event,'f-search-madori')" style="padding:8px 11px;font-size:13px">
+          </div>
+          <div class="search-field">
+            <span class="search-label">間取り</span>
+            <input class="finput" id="f-search-madori" placeholder="1LDK、2LDKなど"
+              onkeydown="if(event.key==='Enter')applyFilters()" style="padding:8px 11px;font-size:13px">
+          </div>
+          <button class="btn btn-p" style="padding:8px 22px;white-space:nowrap" onclick="applyFilters()">
+            <i class="ti ti-search"></i> 検索
+          </button>
+        </div>
+        <div style="display:flex;justify-content:flex-end;margin-top:10px;gap:6px">
+          <button class="btn btn-sm" onclick="toggleAdvFilter()" style="font-size:11px">
+            <i class="ti ti-adjustments-horizontal"></i> 詳細条件
+          </button>
+          <button class="btn btn-sm" onclick="resetFilters()" style="font-size:11px;color:#64748b">
+            <i class="ti ti-refresh"></i> リセット
+          </button>
+        </div>
+
+        <!-- 詳細フィルター -->
+        <div class="adv-filter-panel" id="adv-filter-panel">
+          <div class="adv-filter-body" id="adv-filter-body">
+            <!-- JS で動的生成 -->
+          </div>
+          <div class="adv-filter-foot">
+            <button class="btn btn-sm" onclick="resetFilters()"><i class="ti ti-refresh"></i> リセット</button>
+            <button class="btn btn-p btn-sm" onclick="applyFilters();toggleAdvFilter()">
+              <i class="ti ti-search"></i> この条件で検索
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="results-bar">
+    <span style="font-size:13px;color:#64748b">
+      <strong style="color:var(--navy)" id="results-count">0</strong> 件の物件
+    </span>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button class="btn btn-sm" onclick="guardedScreen('map')" style="background:var(--blue-l);color:var(--blue);border-color:var(--blue-l2)">
+        <i class="ti ti-map-pin"></i>マップで見る
+      </button>
+    </div>
+  </div>
+  <div class="card-grid" id="card-grid"></div>
+  <div class="pagination">
+    <button class="page-btn"><i class="ti ti-chevron-left" style="font-size:13px"></i></button>
+    <button class="page-btn on">1</button>
+    <button class="page-btn"><i class="ti ti-chevron-right" style="font-size:13px"></i></button>
+  </div>
+
+  <!-- HOW IT WORKS -->
+  <section class="lp-section lp-how">
+    <div class="lp-inner">
+      <div class="lp-eyebrow"><i class="ti ti-vr"></i> HOW IT WORKS</div>
+      <h2 class="lp-title">VR内見、<span>たった3ステップ</span></h2>
+      <div class="lp-steps">
+        <div class="lp-step">
+          <div class="lp-step-num">01</div>
+          <div class="lp-step-icon"><i class="ti ti-search"></i></div>
+          <div class="lp-step-title">物件を選ぶ</div>
+          <div class="lp-step-desc">エリア・家賃・間取りで絞り込み、気になる物件を選択します。</div>
+        </div>
+        <div class="lp-step-arrow"><i class="ti ti-arrow-right"></i></div>
+        <div class="lp-step">
+          <div class="lp-step-num">02</div>
+          <div class="lp-step-icon"><i class="ti ti-3d-cube-sphere"></i></div>
+          <div class="lp-step-title">間取りを確認</div>
+          <div class="lp-step-desc">物件詳細から3D間取りを確認。AIが精密に再現します。</div>
+        </div>
+        <div class="lp-step-arrow"><i class="ti ti-arrow-right"></i></div>
+        <div class="lp-step">
+          <div class="lp-step-num">03</div>
+          <div class="lp-step-icon"><i class="ti ti-vr"></i></div>
+          <div class="lp-step-title">VRで内見開始</div>
+          <div class="lp-step-desc">Meta Quest 3で実際の部屋を360°体験。移動なしでリアルな内見。</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FEATURES -->
+  <section class="lp-section lp-features-section">
+    <div class="lp-inner">
+      <div class="lp-eyebrow"><i class="ti ti-star"></i> FEATURES</div>
+      <h2 class="lp-title">選ばれる<span>4つの理由</span></h2>
+      <div class="lp-features-grid">
+        <div class="lp-feat">
+          <div class="lp-feat-icon lp-feat-icon--blue"><i class="ti ti-map-pin"></i></div>
+          <div class="lp-feat-title">全国の物件に対応</div>
+          <div class="lp-feat-desc">都市部から郊外まで、幅広いエリアの物件をVR内見で体験できます。</div>
+        </div>
+        <div class="lp-feat">
+          <div class="lp-feat-icon lp-feat-icon--green"><i class="ti ti-clock"></i></div>
+          <div class="lp-feat-title">24時間いつでも内見</div>
+          <div class="lp-feat-desc">不動産会社の営業時間を気にせず、自分のペースで内見できます。</div>
+        </div>
+        <div class="lp-feat">
+          <div class="lp-feat-icon lp-feat-icon--purple"><i class="ti ti-3d-cube-sphere"></i></div>
+          <div class="lp-feat-title">精密な3D間取り</div>
+          <div class="lp-feat-desc">OpenCVが生成する精密な3D間取りで、部屋の広さや動線を直感的に確認。</div>
+        </div>
+        <div class="lp-feat">
+          <div class="lp-feat-icon lp-feat-icon--teal"><i class="ti ti-device-vr"></i></div>
+          <div class="lp-feat-title">Meta Quest 3対応</div>
+          <div class="lp-feat-desc">最新のVRヘッドセットで、まるで実際にいるような体験が可能です。</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STATS -->
+  <section class="lp-stats-banner">
+    <div class="lp-inner lp-stats-inner">
+      <div class="lp-stat-item">
+        <div class="lp-stat-num" id="lp-stat-props">0件</div>
+        <div class="lp-stat-label">掲載物件数</div>
+      </div>
+      <div class="lp-stat-divider"></div>
+      <div class="lp-stat-item">
+        <div class="lp-stat-num">24h</div>
+        <div class="lp-stat-label">いつでも内見可</div>
+      </div>
+      <div class="lp-stat-divider"></div>
+      <div class="lp-stat-item">
+        <div class="lp-stat-num">360°</div>
+        <div class="lp-stat-label">VR体験</div>
+      </div>
+      <div class="lp-stat-divider"></div>
+      <div class="lp-stat-item">
+        <div class="lp-stat-num">¥0</div>
+        <div class="lp-stat-label">完全無料</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="lp-section lp-cta-section">
+    <div class="lp-inner lp-cta-inner">
+      <span class="lp-cta-icon">🏠</span>
+      <h2 class="lp-cta-title">VR内見を今すぐ体験しよう</h2>
+      <p class="lp-cta-desc">物件を選んで「VRで内見する」ボタンを押すだけ。Meta Quest 3に自動送信されます。</p>
+      <button class="btn btn-p lp-cta-btn" onclick="document.querySelector('.card-grid').scrollIntoView({behavior:'smooth'})">
+        <i class="ti ti-arrow-up"></i> 物件一覧を見る
+      </button>
+    </div>
+  </section>
+
+  <footer class="lp-footer">
+    <div class="lp-inner lp-footer-inner">
+      <div class="lp-footer-logo">
+        <div class="logo-icon"><i class="ti ti-building"></i></div>
+        VR Homes
+      </div>
+      <div class="lp-footer-copy">© 2025 VR Homes. 卒業研究プロジェクト</div>
+    </div>
+  </footer>
+</div>
+
+<!-- ══════ MAP ══════ -->
+<div class="screen" id="s-map">
+  <nav class="nav">
+    <div class="logo" onclick="guardedScreen('top')">
+      <div class="logo-icon"><i class="ti ti-building"></i></div>VR<span class="logo-dot">.</span>Homes
+    </div>
+    <div class="nav-links">
+      <span class="nl" onclick="guardedScreen('top')">← 一覧</span>
+      <span class="nl on">マップ</span>
+    </div>
+    <div class="nav-r">
+      <button class="btn btn-sm" onclick="guardedScreen('mypage')"><i class="ti ti-user"></i>マイページ</button>
+    </div>
+  </nav>
+  <div class="map-wrap">
+    <div class="map-sidebar">
+      <div class="map-sidebar-head">
+        <h3><i class="ti ti-filter"></i> 物件を絞り込む</h3>
+        <div class="map-search-bar">
+          <i class="ti ti-search" style="font-size:13px;color:rgba(255,255,255,.6)"></i>
+          <input id="map-addr-input" type="text" placeholder="住所・エリアで検索..."
+            onkeydown="if(event.key==='Enter')searchMapAddress()">
+          <button onclick="searchMapAddress()" title="検索"><i class="ti ti-arrow-right"></i></button>
+        </div>
+      </div>
+      <div class="map-filters" id="map-filters-container">
+        <!-- JS で動的生成 -->
+      </div>
+      <div class="map-results-section">
+        <div class="map-results-title">
+          <span>検索結果</span>
+          <span id="map-count" style="color:#94a3b8;font-weight:400">0件</span>
+        </div>
+        <div id="map-results"></div>
+      </div>
+    </div>
+    <div class="map-area">
+      <div id="leaf-map" style="width:100%;height:100%"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════ MYPAGE ══════ -->
+<div class="screen" id="s-mypage">
+  <nav class="nav">
+    <div class="logo" onclick="guardedScreen('top')">
+      <div class="logo-icon"><i class="ti ti-building"></i></div>VR<span class="logo-dot">.</span>Homes
+    </div>
+    <div class="nav-r">
+      <button class="btn btn-sm" onclick="guardedScreen('top')"><i class="ti ti-home"></i>トップ</button>
+      <button class="btn btn-sm" onclick="doLogout()">ログアウト</button>
+    </div>
+  </nav>
+  <div class="mypage-wrap">
+    <div class="mypage-sidebar">
+      <div style="text-align:center;margin-bottom:24px">
+        <div style="position:relative;display:inline-block;margin-bottom:10px">
+          <div class="avatar" id="mp-avatar" title="クリックで写真変更" style="cursor:pointer" onclick="document.getElementById('avatar-upload-input').click()">U</div>
+          <div style="position:absolute;bottom:0;right:0;width:22px;height:22px;background:var(--blue);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;border:2px solid #fff;box-shadow:var(--sh-sm)" onclick="document.getElementById('avatar-upload-input').click()">
+            <i class="ti ti-camera" style="font-size:10px;color:#fff"></i>
+          </div>
+        </div>
+        <input type="file" id="avatar-upload-input" accept="image/*" style="display:none" onchange="handleAvatarUpload(this)">
+        <div style="font-size:14px;font-weight:700;color:var(--navy)" id="mp-name">ユーザー</div>
+        <div style="font-size:11px;color:#64748b;margin-top:3px" id="mp-email">-</div>
+        <div style="margin-top:6px" id="mp-role-badge"></div>
+      </div>
+      <div class="mp-nav-item on" onclick="switchMp('fav',this)"><i class="ti ti-heart"></i>お気に入り</div>
+      <div class="mp-nav-item" onclick="switchMp('hist',this)"><i class="ti ti-history"></i>閲覧履歴</div>
+      <div class="mp-nav-item" onclick="switchMp('prof',this)"><i class="ti ti-settings"></i>プロフィール</div>
+      <div class="mp-nav-item" onclick="switchMp('wish',this)"><i class="ti ti-heart-search"></i>希望条件</div>
+      <div class="mp-nav-item hidden" id="mp-nav-code" onclick="switchMp('code',this)"><i class="ti ti-key"></i>コード入力</div>
+    </div>
+    <div class="mypage-main">
+      <div id="mp-fav">
+        <h2 style="font-size:18px;font-weight:800;margin-bottom:20px;color:var(--navy)">お気に入り物件</h2>
+        <div id="mp-fav-list">
+          <div style="padding:48px 0;text-align:center;color:#94a3b8">
+            <i class="ti ti-heart" style="font-size:40px;display:block;margin-bottom:12px;opacity:.3"></i>
+            <div style="font-size:13px">お気に入りはまだありません</div>
+          </div>
+        </div>
+      </div>
+      <div id="mp-hist" style="display:none">
+        <h2 style="font-size:18px;font-weight:800;margin-bottom:20px;color:var(--navy)">閲覧履歴</h2>
+        <div id="mp-hist-list">
+          <div style="padding:48px 0;text-align:center;color:#94a3b8">
+            <i class="ti ti-history" style="font-size:40px;display:block;margin-bottom:12px;opacity:.3"></i>
+            <div style="font-size:13px">閲覧履歴はありません</div>
+          </div>
+        </div>
+      </div>
+      <div id="mp-prof" style="display:none">
+        <h2 style="font-size:18px;font-weight:800;margin-bottom:20px;color:var(--navy)">プロフィール設定</h2>
+        <div class="card" style="max-width:500px">
+          <div style="display:flex;align-items:center;gap:16px;margin-bottom:22px;padding-bottom:18px;border-bottom:1px solid var(--border)">
+            <div class="avatar" id="mp-avatar-prof" style="cursor:pointer;flex-shrink:0" onclick="document.getElementById('avatar-upload-input').click()">U</div>
+            <div>
+              <div style="font-size:13px;font-weight:700;margin-bottom:6px;color:var(--navy)">プロフィール写真</div>
+              <button class="btn btn-sm" onclick="document.getElementById('avatar-upload-input').click()"><i class="ti ti-upload"></i>写真を変更</button>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+            <div class="field">
+              <div class="flabel">姓</div>
+              <input class="finput" id="prof-sei" placeholder="田中" onkeydown="handleFormKey(event,'prof-mei')">
+            </div>
+            <div class="field">
+              <div class="flabel">名</div>
+              <input class="finput" id="prof-mei" placeholder="太郎" onkeydown="handleFormKey(event,'prof-email')">
+            </div>
+          </div>
+          <div class="field">
+            <div class="flabel">メールアドレス</div>
+            <input class="finput" id="prof-email" onkeydown="if(event.key==='Enter')saveProfile()">
+          </div>
+          <div id="prof-save-msg" style="display:none;background:var(--green-l);border:1px solid #86efac;color:var(--green);border-radius:var(--r-md);padding:9px 13px;font-size:13px;margin-bottom:14px">✓ 変更を保存しました</div>
+          <div style="display:flex;gap:10px">
+            <button class="btn btn-p" style="padding:9px 22px;font-size:13px" onclick="saveProfile()">変更を保存</button>
+            <button class="btn" style="padding:9px 22px;font-size:13px;color:var(--red)">アカウント削除</button>
+          </div>
+        </div>
+      </div>
+      <div id="mp-wish" style="display:none">
+        <h2 style="font-size:18px;font-weight:800;margin-bottom:20px;color:var(--navy)">希望条件</h2>
+        <div class="card" style="max-width:620px">
+          <p style="font-size:13px;color:#64748b;margin-bottom:18px;line-height:1.7">希望条件を登録すると、次回の検索に活用できます。</p>
+          <div class="wishlist-grid">
+            <div>
+              <div class="wish-label">希望間取り</div>
+              <div class="wish-tag-wrap" id="wish-madori">
+                <span class="wtag" data-value="1K"      onclick="toggleWtag(this,'madori')">1K</span>
+                <span class="wtag" data-value="1LDK"    onclick="toggleWtag(this,'madori')">1LDK</span>
+                <span class="wtag" data-value="2LDK"    onclick="toggleWtag(this,'madori')">2LDK</span>
+                <span class="wtag" data-value="3LDK以上" onclick="toggleWtag(this,'madori')">3LDK以上</span>
+              </div>
+            </div>
+            <div>
+              <div class="wish-label">物件種別</div>
+              <div class="wish-tag-wrap" id="wish-type">
+                <span class="wtag" data-value="マンション" onclick="toggleWtag(this,'type')">マンション</span>
+                <span class="wtag" data-value="アパート"   onclick="toggleWtag(this,'type')">アパート</span>
+                <span class="wtag" data-value="一戸建て"   onclick="toggleWtag(this,'type')">一戸建て</span>
+              </div>
+            </div>
+            <div>
+              <div class="wish-label">家賃上限</div>
+              <div class="wish-tag-wrap" id="wish-priceMax">
+                <span class="wtag" data-value="〜6万円"  onclick="toggleWtag(this,'priceMax')">〜6万円</span>
+                <span class="wtag" data-value="〜8万円"  onclick="toggleWtag(this,'priceMax')">〜8万円</span>
+                <span class="wtag" data-value="〜10万円" onclick="toggleWtag(this,'priceMax')">〜10万円</span>
+                <span class="wtag" data-value="〜15万円" onclick="toggleWtag(this,'priceMax')">〜15万円</span>
+              </div>
+            </div>
+            <div>
+              <div class="wish-label">こだわり条件</div>
+              <div class="wish-tag-wrap" id="wish-features">
+                <span class="wtag" data-value="ペット可"       onclick="toggleWtag(this,'features')">ペット可</span>
+                <span class="wtag" data-value="オートロック"   onclick="toggleWtag(this,'features')">オートロック</span>
+                <span class="wtag" data-value="バス・トイレ別" onclick="toggleWtag(this,'features')">バス・トイレ別</span>
+                <span class="wtag" data-value="インターネット無料" onclick="toggleWtag(this,'features')">ネット無料</span>
+                <span class="wtag" data-value="宅配ボックス"   onclick="toggleWtag(this,'features')">宅配ボックス</span>
+                <span class="wtag" data-value="駐車場"         onclick="toggleWtag(this,'features')">駐車場</span>
+                <span class="wtag" data-value="即入居可"        onclick="toggleWtag(this,'features')">即入居可</span>
+              </div>
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;margin-top:22px">
+            <button class="btn btn-p" style="padding:9px 22px;font-size:13px" onclick="alert('希望条件を保存しました！')"><i class="ti ti-check"></i> 保存する</button>
+            <button class="btn" style="padding:9px 18px;font-size:13px" onclick="applyWishlistToFilter()"><i class="ti ti-search"></i> この条件で検索</button>
+          </div>
+        </div>
+      </div>
+      <div id="mp-code" style="display:none">
+        <h2 style="font-size:18px;font-weight:800;margin-bottom:8px;color:var(--navy)">コード入力</h2>
+        <div class="card" style="max-width:380px">
+          <div class="field">
+            <div class="flabel">管理者コード <span class="req">*</span></div>
+            <input class="finput" id="code-input" type="password" placeholder="コードを入力"
+              style="letter-spacing:.2em;font-size:18px" onkeydown="if(event.key==='Enter')submitCode()">
+          </div>
+          <div id="code-msg" style="display:none;border-radius:var(--r-md);padding:9px 13px;font-size:13px;margin-bottom:14px"></div>
+          <button class="btn btn-p" onclick="submitCode()" style="width:100%;padding:11px;justify-content:center;font-size:13px">
+            <i class="ti ti-check"></i> 認証する
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════ ADMIN ══════ -->
+<div class="screen" id="s-admin">
+  <nav class="nav" style="background:#0f172a;border-bottom-color:#1e293b">
+    <div class="logo" style="color:#fff;cursor:pointer" onclick="guardedScreen('top')">
+      <div style="width:34px;height:34px;background:rgba(255,255,255,.1);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px;color:#93c5fd">
+        <i class="ti ti-settings"></i>
+      </div>
+      <span style="color:#fff">管理者パネル</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="font-size:12px;color:#64748b" id="admin-email-display">-</span>
+      <button class="btn btn-sm" onclick="doLogout()" style="border-color:rgba(255,255,255,.15);color:#94a3b8">ログアウト</button>
+    </div>
+  </nav>
+  <div class="admin-wrap">
+    <div class="admin-sidebar">
+      <div class="admin-sidebar-title">MENU</div>
+      <div class="admin-nav-item on" onclick="switchAdmin('props',this)"><i class="ti ti-building"></i>物件管理</div>
+      <div class="admin-nav-item" onclick="switchAdmin('users',this)"><i class="ti ti-users"></i>ユーザー管理</div>
+      <div class="admin-nav-item" onclick="switchAdmin('stats',this)"><i class="ti ti-chart-bar"></i>分析</div>
+      <div style="margin-top:20px;padding-top:16px;border-top:1px solid rgba(255,255,255,.06)">
+        <div class="stat-mini"><div class="stat-mini-label">ユーザー数</div><div class="stat-mini-val" id="admin-user-count">-</div></div>
+      </div>
+    </div>
+    <div class="admin-main">
+      <div id="admin-props">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+          <h2 style="font-size:18px;font-weight:800;color:var(--navy)">物件管理</h2>
+          <button class="btn btn-p btn-sm" onclick="toggleAddForm()"><i class="ti ti-plus"></i>物件を追加</button>
+        </div>
+        <div class="add-form" id="add-form">
+          <div style="font-size:15px;font-weight:800;margin-bottom:16px;display:flex;align-items:center;gap:8px;color:var(--navy)">
+            <span id="af-form-title">新規物件登録</span>
+            <span id="af-edit-badge" style="display:none;font-size:11px;background:#fef3c7;color:#92400e;padding:2px 10px;border-radius:20px;font-weight:700">編集モード</span>
+          </div>
+          <div class="add-form-grid">
+            <div class="field"><div class="flabel">物件名 <span class="req">*</span></div><input class="finput" id="af-name" placeholder="例：ハイツ渋谷" onkeydown="handleFormKey(event,'af-area')"></div>
+            <div class="field"><div class="flabel">エリア <span class="req">*</span></div><input class="finput" id="af-area" placeholder="東京都渋谷区" onkeydown="handleFormKey(event,'af-rent')"></div>
+            <div class="field"><div class="flabel">家賃（円）<span class="req">*</span></div><input class="finput" type="number" id="af-rent" placeholder="92000" onkeydown="handleFormKey(event,'af-mgmt')"></div>
+            <div class="field"><div class="flabel">管理費（円）</div><input class="finput" type="number" id="af-mgmt" placeholder="5000" onkeydown="handleFormKey(event,'af-deposit')"></div>
+            <div class="field"><div class="flabel">敷金（ヶ月）</div><input class="finput" type="number" id="af-deposit" placeholder="1" step="0.5" onkeydown="handleFormKey(event,'af-key')"></div>
+            <div class="field"><div class="flabel">礼金（ヶ月）</div><input class="finput" type="number" id="af-key" placeholder="1" step="0.5" onkeydown="handleFormKey(event,'af-madori')"></div>
+            <div class="field"><div class="flabel">間取り <span class="req">*</span></div><input class="finput" id="af-madori" placeholder="2LDK、1K+S など" onkeydown="handleFormKey(event,'af-size')"></div>
+            <div class="field"><div class="flabel">面積（㎡）</div><input class="finput" type="number" id="af-size" placeholder="48" onkeydown="handleFormKey(event,'af-station')"></div>
+            <div class="field"><div class="flabel">最寄り駅名</div><input class="finput" id="af-station" placeholder="渋谷" onkeydown="handleFormKey(event,'af-walk-min')"></div>
+            <div class="field"><div class="flabel">駅からの徒歩（分）</div><input class="finput" type="number" id="af-walk-min" placeholder="3" onkeydown="handleFormKey(event,'af-age')"></div>
+            <div class="field">
+              <div class="flabel">物件種別</div>
+              <select class="finput" id="af-type">
+                <option>マンション</option><option>アパート</option><option>一戸建て</option>
+                <option>テラスハウス</option><option>店舗・事務所</option><option>タワーマンション</option>
+                <option>ヴィラ・邸宅</option><option>シェアハウス</option><option>学生寮</option>
+              </select>
+            </div>
+            <div class="field">
+              <div class="flabel">建物構造</div>
+              <select class="finput" id="af-structure">
+                <option>RC（鉄筋コンクリート）</option>
+                <option>SRC（鉄骨鉄筋コンクリート）</option>
+                <option>S造（鉄骨）</option>
+                <option>木造</option>
+                <option>ALC（軽量気泡コンクリート）</option>
+                <option>PC（プレキャストコンクリート）</option>
+                <option>混構造</option>
+                <option>CFT（コンクリート充填鋼管）</option>
+              </select>
+            </div>
+            <div class="field"><div class="flabel">築年数</div><input class="finput" type="number" id="af-age" placeholder="10" onkeydown="handleFormKey(event,'af-address')"></div>
+            <div class="field" style="grid-column:1/-1">
+              <div class="flabel">詳細住所 <span style="font-size:10px;color:#94a3b8">（マップのピンに使用されます）</span></div>
+              <input class="finput" id="af-address" placeholder="例：東京都渋谷区道玄坂1丁目" onkeydown="handleFormKey(event,'af-desc')">
+            </div>
+            <div class="field" style="grid-column:1/-1">
+              <div class="flabel">物件説明</div>
+              <textarea class="finput" id="af-desc" rows="2" placeholder="物件の特徴・アピールポイントなど" style="resize:vertical"></textarea>
+            </div>
+            <div class="field" style="grid-column:1/-1">
+              <div class="flabel">物件写真（複数枚OK）</div>
+              <div id="af-existing-photos" style="display:none;margin-bottom:10px">
+                <div style="font-size:11px;color:#94a3b8;margin-bottom:6px">既存の写真（× で削除）</div>
+                <div id="af-existing-photos-list" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+              </div>
+              <input type="file" id="af-photo" accept="image/*" multiple class="finput" style="padding:7px 11px">
+              <div id="af-new-photos-hint" style="display:none;font-size:11px;color:#94a3b8;margin-top:4px">既存写真に追加する形でアップロードされます</div>
+            </div>
+            <div class="field" style="grid-column:1/-1">
+              <div class="flabel">間取り図（任意・VR内見用）</div>
+              <button class="btn btn-sm" type="button" onclick="openFloorEditor()"><i class="ti ti-pencil"></i>間取りを編集する</button>
+              <div class="fp-thumb-wrap" id="fp-thumb-wrap" style="display:none;margin-top:10px;align-items:center;gap:12px">
+                <div class="fp-thumb"><img id="fp-thumb-img" alt="間取りプレビュー" style="max-width:100%;max-height:100%"></div>
+                <div style="font-size:11px;color:#64748b">
+                  <div id="fp-thumb-info">間取りデータあり</div>
+                  <div style="margin-top:5px">
+                    <span style="cursor:pointer;color:var(--blue)" onclick="openFloorEditor()">編集</span> ／
+                    <span style="cursor:pointer;color:var(--red)" onclick="clearFloorplan()">削除</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;justify-content:flex-end">
+            <button class="btn btn-sm" onclick="toggleAddForm()">キャンセル</button>
+            <button class="btn btn-p btn-sm" id="af-submit-btn" onclick="addProperty()"><i class="ti ti-check"></i> 登録する</button>
+          </div>
+        </div>
+        <div class="admin-table-wrap">
+          <div class="admin-table-head" style="grid-template-columns:2fr 1fr 1fr 130px">
+            <span>物件名</span><span>エリア</span><span>家賃</span><span>操作</span>
+          </div>
+          <div id="prop-table-body"></div>
+        </div>
+      </div>
+      <div id="admin-users" style="display:none">
+        <h2 style="font-size:18px;font-weight:800;margin-bottom:18px;color:var(--navy)">ユーザー管理</h2>
+        <div style="margin-bottom:14px;display:flex;gap:8px">
+          <input class="finput" id="user-search" oninput="renderUserTable()" placeholder="名前・メールで検索..." style="max-width:280px;padding:7px 11px;font-size:12px">
+          <select class="finput" id="user-filter" onchange="renderUserTable()" style="width:auto;padding:7px 11px;font-size:12px">
+            <option value="">全ロール</option><option value="user">一般</option><option value="admin">管理者</option>
+          </select>
+        </div>
+        <div class="admin-table-wrap">
+          <div class="admin-table-head" style="grid-template-columns:1.5fr 2fr 1fr 1fr 1fr">
+            <span>氏名</span><span>メール</span><span>ロール</span><span>状態</span><span>操作</span>
+          </div>
+          <div id="user-table-body"></div>
+        </div>
+      </div>
+      <div id="admin-stats" style="display:none">
+        <h2 style="font-size:18px;font-weight:800;margin-bottom:18px;color:var(--navy)">アクセス分析</h2>
+        <div class="stat-card-grid">
+          <div class="stat-card"><div class="stat-card-label">登録物件数</div><div class="stat-card-val" id="stat-prop-count">0</div></div>
+          <div class="stat-card"><div class="stat-card-label">ユーザー数</div><div class="stat-card-val" id="admin-user-count2">0</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════ MASTER ══════ -->
+<div class="screen" id="s-master">
+  <nav class="nav master-nav">
+    <div class="logo" style="color:#e0c97a;cursor:pointer" onclick="guardedScreen('top')">
+      <div style="width:34px;height:34px;background:rgba(224,201,122,.12);border-radius:9px;display:flex;align-items:center;justify-content:center">
+        <i class="ti ti-crown" style="color:#e0c97a"></i>
+      </div>
+      マスターパネル
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <span class="master-badge"><i class="ti ti-crown" style="font-size:10px"></i>nori1216chopper</span>
+      <button class="btn btn-sm" onclick="doLogout()" style="border-color:rgba(255,255,255,.15);color:#e0c97a">ログアウト</button>
+    </div>
+  </nav>
+  <div class="admin-wrap">
+    <div class="admin-sidebar">
+      <div class="admin-sidebar-title">MASTER MENU</div>
+      <div class="admin-nav-item on" onclick="switchMaster('users',this)"><i class="ti ti-users"></i>全ユーザー管理</div>
+      <div class="admin-nav-item" onclick="switchMaster('roles',this)"><i class="ti ti-shield"></i>ロール変更</div>
+      <div class="admin-nav-item" onclick="switchMaster('fields',this)"><i class="ti ti-list-details"></i>物件条件管理</div>
+      <!-- 広告管理タブは隠し機能（コード入力で解放） -->
+      <div style="margin-top:20px;padding-top:16px;border-top:1px solid rgba(255,255,255,.06)">
+        <div class="stat-mini"><div class="stat-mini-label">全ユーザー数</div><div class="stat-mini-val" id="master-user-count">-</div></div>
+        <div class="stat-mini"><div class="stat-mini-label">管理者数</div><div class="stat-mini-val" id="master-admin-count">-</div></div>
+        <div class="stat-mini"><div class="stat-mini-label">一般ユーザー数</div><div class="stat-mini-val" id="master-regular-count">-</div></div>
+      </div>
+    </div>
+    <div class="admin-main">
+      <div id="master-users">
+        <h2 style="font-size:18px;font-weight:800;margin-bottom:18px;color:var(--navy)">全ユーザー管理</h2>
+        <div style="margin-bottom:14px;display:flex;gap:8px">
+          <input class="finput" id="master-search" oninput="renderMasterUserTable()" placeholder="名前・メールで検索..." style="max-width:280px;padding:7px 11px;font-size:12px">
+          <select class="finput" id="master-filter" onchange="renderMasterUserTable()" style="width:auto;padding:7px 11px;font-size:12px">
+            <option value="">全ロール</option><option value="user">一般</option><option value="admin">管理者</option>
+          </select>
+        </div>
+        <div class="admin-table-wrap">
+          <div class="admin-table-head" style="grid-template-columns:1.5fr 2fr 1fr 1fr 1fr">
+            <span>氏名</span><span>メール</span><span>ロール</span><span>状態</span><span>操作</span>
+          </div>
+          <div id="master-user-table-body"></div>
+        </div>
+      </div>
+      <div id="master-roles" style="display:none">
+        <h2 style="font-size:18px;font-weight:800;margin-bottom:18px;color:var(--navy)">ロール変更</h2>
+        <div class="card" style="max-width:500px;margin-bottom:22px">
+          <div class="field">
+            <div class="flabel">対象ユーザー（メール）</div>
+            <input class="finput" id="role-target-email" placeholder="変更したいユーザーのメール" onkeydown="handleFormKey(event,'role-select')">
+          </div>
+          <div class="field">
+            <div class="flabel">変更後のロール</div>
+            <select class="finput" id="role-select">
+              <option value="user">一般ユーザー</option><option value="admin">管理者</option>
+            </select>
+          </div>
+          <div id="role-msg" style="display:none;border-radius:var(--r-md);padding:9px 13px;font-size:13px;margin-bottom:14px"></div>
+          <button class="btn btn-p" onclick="changeUserRole()" style="width:100%;padding:11px;justify-content:center;font-size:13px">
+            <i class="ti ti-shield"></i> ロールを変更する
+          </button>
+        </div>
+        <div class="admin-table-wrap">
+          <div class="admin-table-head" style="grid-template-columns:1.5fr 2fr 1fr 1fr">
+            <span>氏名</span><span>メール</span><span>ロール</span><span>変更</span>
+          </div>
+          <div id="role-table-body"></div>
+        </div>
+      </div>
+      <!-- 物件条件管理 -->
+      <div id="master-fields" style="display:none">
+        <h2 style="font-size:18px;font-weight:800;margin-bottom:6px;color:var(--navy)">物件条件管理</h2>
+        <p style="font-size:13px;color:#64748b;margin-bottom:22px;line-height:1.7">フィルターに表示される条件項目を追加・編集・削除できます。変更は即時反映されます。</p>
+
+        <div class="master-section">
+          <div class="master-section-title"><i class="ti ti-building" style="color:var(--blue)"></i>物件種別</div>
+          <div id="field-list-types"></div>
+          <div style="display:flex;gap:8px;margin-top:12px">
+            <input class="finput" id="new-type-input" placeholder="新しい物件種別を入力" style="font-size:13px"
+              onkeydown="if(event.key==='Enter')addFieldItem('types')">
+            <button class="btn btn-p btn-sm" onclick="addFieldItem('types')"><i class="ti ti-plus"></i> 追加</button>
+          </div>
+        </div>
+
+        <div class="master-section">
+          <div class="master-section-title"><i class="ti ti-home-2" style="color:var(--violet)"></i>設備・条件</div>
+          <div id="field-list-features"></div>
+          <div style="display:flex;gap:8px;margin-top:12px">
+            <input class="finput" id="new-feature-input" placeholder="新しい設備・条件を入力" style="font-size:13px"
+              onkeydown="if(event.key==='Enter')addFieldItem('features')">
+            <button class="btn btn-p btn-sm" onclick="addFieldItem('features')"><i class="ti ti-plus"></i> 追加</button>
+          </div>
+        </div>
+
+        <div class="master-section">
+          <div class="master-section-title"><i class="ti ti-layout" style="color:var(--teal)"></i>間取り選択肢</div>
+          <div id="field-list-madori"></div>
+          <div style="display:flex;gap:8px;margin-top:12px">
+            <input class="finput" id="new-madori-input" placeholder="例：5LDK" style="font-size:13px"
+              onkeydown="if(event.key==='Enter')addFieldItem('madori')">
+            <button class="btn btn-p btn-sm" onclick="addFieldItem('madori')"><i class="ti ti-plus"></i> 追加</button>
+          </div>
+        </div>
+      </div>
+      <!-- 広告管理 -->
+      <div id="master-ads" style="display:none">
+        <!-- JS で動的生成 -->
+      </div>
+      <!-- 隠しコード入力（master-fieldsの最下部に埋め込み） -->
+      <div id="master-secret-unlock" style="display:none;margin-top:32px;padding-top:20px;border-top:1px solid rgba(255,255,255,.06)">
+        <div style="font-size:11px;color:rgba(255,255,255,.2);margin-bottom:8px;letter-spacing:.05em">シークレットコード</div>
+        <div style="display:flex;gap:8px">
+          <input id="secret-code-input" type="password" class="finput"
+            placeholder="••••••••"
+            style="max-width:180px;background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.1);color:rgba(255,255,255,.5);font-size:13px;letter-spacing:.15em"
+            onkeydown="if(event.key==='Enter')submitSecretCode()">
+          <button class="btn btn-sm" onclick="submitSecretCode()"
+            style="border-color:rgba(255,255,255,.1);color:rgba(255,255,255,.3);background:transparent;font-size:11px">
+            解除
+          </button>
+        </div>
+        <div id="secret-code-msg" style="font-size:11px;margin-top:6px;display:none"></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="pd-overlay" class="pd-overlay" onclick="if(event.target===this)closePropDetail()">
+  <div class="pd-modal">
+    <button class="pd-close" onclick="closePropDetail()"><i class="ti ti-x"></i></button>
+    <div class="pd-slider" id="pd-slider">
+      <div style="display:flex;align-items:center;justify-content:center;height:100%;color:#93c5fd">
+        <i class="ti ti-building" style="font-size:64px;opacity:.4"></i>
+      </div>
+    </div>
+    <div class="pd-body">
+      <div class="pd-main">
+        <div class="pd-price-row">
+          <div class="pd-price" id="pd-price">¥−</div>
+          <div class="pd-price-unit">/月</div>
+        </div>
+        <div style="font-size:22px;font-weight:800;color:var(--navy);margin-bottom:10px" id="pd-name">−</div>
+        <div id="pd-tags" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px"></div>
+        <div class="pd-info-grid" id="pd-info-grid"></div>
+        <div class="pd-section-title">費用</div>
+        <div id="pd-costs"></div>
+        <div class="pd-section-title">設備・条件</div>
+        <div class="pd-feature-wrap" id="pd-features"></div>
+        <div class="pd-section-title">物件説明</div>
+        <p style="font-size:13px;color:#64748b;line-height:1.8" id="pd-desc"></p>
+        <div class="pd-section-title">所在地</div>
+        <p style="font-size:13px;color:#64748b" id="pd-address"></p>
+      </div>
+      <div class="pd-side">
+        <div class="pd-mini-map" id="pd-mini-map"></div>
+        <button class="btn btn-p" id="pd-vr-btn" style="width:100%;justify-content:center;padding:11px;display:none" onclick="viewInVR(pdCurrentId)">
+          <i class="ti ti-vr"></i> VRで内見する
+        </button>
+        <button class="btn" style="width:100%;justify-content:center;padding:11px">
+          <i class="ti ti-mail"></i> 問い合わせる
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════ ユーザー詳細モーダル ══════ -->
+<div id="user-detail-modal" style="display:none;position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.6);backdrop-filter:blur(4px)" onclick="if(event.target===this)closeUserDetail()">
+  <div style="position:absolute;right:0;top:0;bottom:0;width:min(440px,100vw);background:var(--surface);padding:0;overflow-y:auto;box-shadow:var(--sh-xl)">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:18px 24px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--surface);z-index:1">
+      <h3 style="font-size:15px;font-weight:800;color:var(--navy);margin:0">ユーザー詳細</h3>
+      <button onclick="closeUserDetail()" style="width:32px;height:32px;border-radius:50%;border:1.5px solid var(--border);background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#64748b"><i class="ti ti-x"></i></button>
+    </div>
+    <div id="user-detail-content" style="padding:22px 24px"></div>
+  </div>
+</div>
+
+<!-- ══════ 間取りエディタ モーダル ══════ -->
+<div id="floor-editor-overlay" onclick="if(event.target===this)closeFloorEditor()">
+  <div class="fe-modal">
+    <div class="fe-head">
+      <h2>
+        <span class="fe-icon"><i class="ti ti-vr"></i></span>
+        <span id="fe-title">間取りエディタ</span>
+        <span class="fe-mode-badge" id="fe-mode-badge">編集モード</span>
+      </h2>
+      <button class="fe-close-btn" onclick="closeFloorEditor()"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="fe-body">
+      <iframe class="fe-iframe" id="fe-iframe" allow="fullscreen"></iframe>
+      <div class="fe-loading" id="fe-loading">
+        <div class="fe-spinner"></div>
+        <div>間取りエディタを読み込み中...</div>
+      </div>
+      <div class="fe-error" id="fe-error">
+        <div class="fe-error-icon"><i class="ti ti-file-off"></i></div>
+        <div class="fe-error-title">間取りエディタを読み込めませんでした</div>
+        <div class="fe-error-desc">
+          <code>floor-editor.html</code> が見つかりません。<br><br>
+          物件アプリの <code>index.html</code> と同じフォルダに <code>floor-editor.html</code> を配置してください。
+        </div>
+        <button class="btn btn-sm" onclick="closeFloorEditor()">閉じる</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast Container -->
+<div class="toast-container" id="toast-container"></div>
+
+<!-- PWA インストールバナー -->
+<div id="pwa-banner">
+  <div class="pwa-icon">🏠</div>
+  <div class="pwa-text">
+    <strong>VR Homes をインストール</strong>
+    <span>ホーム画面に追加してアプリとして使えます</span>
+  </div>
+  <button class="pwa-install" id="pwa-install-btn">追加する</button>
+  <button class="pwa-close" onclick="document.getElementById('pwa-banner').classList.remove('show');localStorage.setItem('pwa_dismissed','1')">✕</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="app.js"></script>
+<script>
+/* ── Service Worker 登録 ── */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js')
+      .then(reg => console.log('[SW] 登録成功:', reg.scope))
+      .catch(err => console.warn('[SW] 登録失敗:', err));
+  });
+}
+
+/* ── インストールバナー ── */
+let _deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  _deferredPrompt = e;
+  // 過去に閉じていなければバナー表示
+  if (!localStorage.getItem('pwa_dismissed') && !localStorage.getItem('pwa_installed')) {
+    setTimeout(() => document.getElementById('pwa-banner').classList.add('show'), 2000);
+  }
+});
+
+document.getElementById('pwa-install-btn').addEventListener('click', async () => {
+  const banner = document.getElementById('pwa-banner');
+  banner.classList.remove('show');
+  if (_deferredPrompt) {
+    _deferredPrompt.prompt();
+    const { outcome } = await _deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      localStorage.setItem('pwa_installed', '1');
+      console.log('[PWA] インストールされました');
+    }
+    _deferredPrompt = null;
+  }
+});
+
+window.addEventListener('appinstalled', () => {
+  localStorage.setItem('pwa_installed', '1');
+  document.getElementById('pwa-banner').classList.remove('show');
+  console.log('[PWA] アプリとしてインストール完了');
+});
+</script>
+</body>
+</html>

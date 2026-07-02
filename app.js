@@ -223,9 +223,12 @@ function refreshAllFilters() {
   // TOP詳細フィルター
   const advBody = document.getElementById('adv-filter-body');
   if (advBody) advBody.innerHTML = buildAdvFilterHTML();
-  // MAP フィルター
+  // MAP フィルター（PC版サイドバー）
   const mapFilters = document.getElementById('map-filters-container');
   if (mapFilters) mapFilters.innerHTML = buildMapFilterHTML();
+  // MAP フィルター（スマホ版シート）
+  const mapFiltersM = document.getElementById('map-filters-container-m');
+  if (mapFiltersM) mapFiltersM.innerHTML = buildMapFilterHTML();
   // 管理者フォームの物件種別select
   rebuildTypeSelect();
   // マスター管理画面
@@ -310,30 +313,44 @@ function startEditField(key, index) {
 /* ══════════════════════════════════════
    MAP ADDRESS SEARCH
 ══════════════════════════════════════ */
-async function searchMapAddress() {
-  const inp = document.getElementById('map-addr-input');
-  const val = inp ? inp.value.trim() : '';
+async function _runMapSearch(val){
   if (!val) return;
-  // TOP検索バーにも反映
-  const topSearch = document.getElementById('f-search-text');
-  if (topSearch) topSearch.value = val;
+  // PC・スマホ・TOP すべての検索欄に反映
+  ['f-search-text','map-addr-input','map-addr-input-m'].forEach(id=>{const el=document.getElementById(id);if(el) el.value=val;});
   filterState.searchText = val;
   showToast('「'+val+'」を検索中...', 'info', 2000);
   const coords = await geocodeAddress(val);
   if (coords && leafletMap) {
-    leafletMap.setView([coords.lat, coords.lng], 14);
+    leafletMap.flyTo([coords.lat, coords.lng], 15, {duration:0.8});
     showToast('地図を移動しました', 'success');
   } else {
     showToast('住所が見つかりませんでした', 'warn');
   }
   renderCards(); updateResultsCount(); renderMapSidebar(); updateMapMarkerVisibility();
 }
+async function searchMapAddress() {
+  const inp = document.getElementById('map-addr-input');
+  await _runMapSearch(inp ? inp.value.trim() : '');
+}
+async function searchMapAddressMobile() {
+  const inp = document.getElementById('map-addr-input-m');
+  await _runMapSearch(inp ? inp.value.trim() : '');
+}
 
-/* TOP検索→MAPアドレスバーにも反映 */
+/* スマホ用フィルターシート開閉 */
+function openMobileFilterSheet(){
+  const sheet=document.getElementById('map-filter-sheet');
+  if(sheet) sheet.classList.add('show');
+}
+function closeMobileFilterSheet(){
+  const sheet=document.getElementById('map-filter-sheet');
+  if(sheet) sheet.classList.remove('show');
+}
+
+/* TOP検索→MAPアドレスバー（PC・スマホ両方）にも反映 */
 function syncSearchToMap() {
   const val = (document.getElementById('f-search-text')||{}).value||'';
-  const mapInp = document.getElementById('map-addr-input');
-  if (mapInp) mapInp.value = val;
+  ['map-addr-input','map-addr-input-m'].forEach(id=>{const el=document.getElementById(id);if(el) el.value=val;});
 }
 
 /* ══════════════════════════════════════
@@ -603,6 +620,12 @@ function gateLogin(){
   const user=userStore.find(u=>u.email===email&&u.password===pass);
   if(!user){showGateMsg('メールアドレスまたはパスワードが違います',true);return;}
   if(!user.active){showGateMsg('このアカウントは停止されています',true);return;}
+  try{ localStorage.setItem('vr_session_email', user.email); }catch(e){}
+  _enterApp(user);
+}
+
+/* ログイン成功後の共通処理（新規ログイン・セッション復元で共用） */
+function _enterApp(user){
   isLoggedIn=true;currentUser=user;
   favs=new Set(Array.isArray(user.favs)?user.favs:[]);
   viewHistory=(user.history||[]).map(h=>({...h,time:new Date(h.time)}));
@@ -615,6 +638,17 @@ function gateLogin(){
     showScreen('master');
   }
   else showScreen('top');
+}
+
+/* リロード時にセッションを復元 */
+function restoreSession(){
+  let email=null;
+  try{ email=localStorage.getItem('vr_session_email'); }catch(e){}
+  if(!email) return false;
+  const user=userStore.find(u=>u.email===email);
+  if(!user||!user.active) { try{localStorage.removeItem('vr_session_email');}catch(e){} return false; }
+  _enterApp(user);
+  return true;
 }
 
 function gateRegister(){
@@ -634,6 +668,7 @@ function gateRegister(){
 
 function doLogout(){
   isLoggedIn=false;currentUser=null;
+  try{ localStorage.removeItem('vr_session_email'); }catch(e){}
   // ログイン画面フォームをリセット
   const form=document.getElementById('gate-form');
   if(form) form.innerHTML='';
@@ -742,12 +777,12 @@ function toggleFav(id,el){
     if(el){el.classList.remove('on');const icon=el.querySelector('i');if(icon) icon.className='ti ti-heart';}
   } else {
     favs.add(id);
-    if(el){el.classList.add('on');const icon=el.querySelector('i');if(icon) icon.className='ti ti-heart-filled';}
+    if(el){el.classList.add('on');const icon=el.querySelector('i');if(icon) icon.className='ti ti-heart';}
   }
   document.querySelectorAll(`.fav-btn[data-prop-id="${id}"]`).forEach(btn=>{
     btn.classList.toggle('on',favs.has(id));
     const icon=btn.querySelector('i');
-    if(icon) icon.className='ti ti-heart'+(favs.has(id)?'-filled':'');
+    if(icon) icon.className='ti ti-heart';
   });
   if(currentUser){currentUser.favs=[...favs];saveUserToAWS(currentUser);}
   const favTab=document.getElementById('mp-fav');
@@ -774,7 +809,7 @@ function renderFavorites(){
         <div style="font-size:11px;color:#94a3b8">${p.station||''}${p.walkMin?' 徒歩'+p.walkMin+'分':''}</div>
       </div>
       <button class="btn btn-sm" style="flex-shrink:0;color:var(--red)" onclick="event.stopPropagation();toggleFav(${p.id},null)">
-        <i class="ti ti-heart-filled"></i>
+        <i class="ti ti-heart"></i>
       </button>
     </div>`;
   }).join('');
@@ -1025,6 +1060,11 @@ function addMapMarker(prop){
       <div style="display:flex;gap:3px;flex-wrap:wrap;margin-bottom:6px">${feats}</div>
       <div style="font-size:11px;color:#2563eb;font-weight:600">クリックして詳細を見る →</div>
     </div>`,{maxWidth:240});
+  // マーカークリックでその場所までズーム
+  marker.on('click',()=>{
+    leafletMap.flyTo([prop.lat,prop.lng],17,{duration:0.8});
+    document.querySelectorAll('#map-results .result-item').forEach(el=>el.classList.toggle('on',el.dataset.propId===String(prop.id)));
+  });
   mapMarkers[prop.id]=marker;
 }
 
@@ -1043,13 +1083,14 @@ function renderMapSidebar(){
     </div>`;
   }).join(''):'<div style="padding:14px;font-size:12px;color:#94a3b8;text-align:center">条件に合う物件が見つかりません</div>';
   const cnt=document.getElementById('map-count');if(cnt) cnt.textContent=filtered.length+'件';
+  const cntM=document.getElementById('map-mobile-count');if(cntM) cntM.textContent=filtered.length+'件';
 }
 
 function focusMapPin(id){
   document.querySelectorAll('#map-results .result-item').forEach(el=>el.classList.toggle('on',el.dataset.propId===String(id)));
   const p=PROPS.find(p=>p.id===id);if(!p) return;
   if(p.lat&&p.lng){
-    if(leafletMap){leafletMap.setView([p.lat,p.lng],16);if(mapMarkers[id]) mapMarkers[id].openPopup();}
+    if(leafletMap){leafletMap.flyTo([p.lat,p.lng],17,{duration:0.8});setTimeout(()=>{if(mapMarkers[id]) mapMarkers[id].openPopup();},850);}
     return;
   }
   const addr=normalizeAddress(p.address)||normalizeAddress(p.area)||p.station;
@@ -1058,7 +1099,7 @@ function focusMapPin(id){
   geocodeAddress(addr).then(coords=>{
     if(coords){
       p.lat=coords.lat;p.lng=coords.lng;addMapMarker(p);
-      if(leafletMap){leafletMap.setView([p.lat,p.lng],16);if(mapMarkers[id]) mapMarkers[id].openPopup();}
+      if(leafletMap){leafletMap.flyTo([p.lat,p.lng],17,{duration:0.8});setTimeout(()=>{if(mapMarkers[id]) mapMarkers[id].openPopup();},850);}
       renderMapSidebar();updatePropertyOnAWS(p).catch(()=>{});showToast('位置を特定しました','success');
     } else {showToast('住所から場所を特定できませんでした','warn');}
   });
@@ -1096,6 +1137,80 @@ async function geocodeAddress(rawAddr){
   const s5m=addr.match(/^(.+[都道府県])(.+?[市区町村])/);
   if(s5m){r=await tryFetch(s5m[1]+s5m[2]);if(r) return r;}
   return null;
+}
+
+/* 座標から最寄り駅を検索（Overpass API：半径2km内の駅を距離順に） */
+async function findNearestStation(lat,lng){
+  const query=`[out:json][timeout:15];(node["railway"="station"](around:2000,${lat},${lng});node["station"="subway"](around:2000,${lat},${lng}););out body 30;`;
+  const endpoints=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter'];
+  for(const ep of endpoints){
+    try{
+      const res=await fetch(ep,{method:'POST',body:'data='+encodeURIComponent(query)});
+      if(!res.ok) continue;
+      const data=await res.json();
+      const els=(data.elements||[]).filter(e=>e.tags&&(e.tags.name||e.tags['name:ja']));
+      if(!els.length) continue;
+      // 距離計算
+      const toRad=d=>d*Math.PI/180;
+      const dist=(la,lo)=>{
+        const R=6371000,dLa=toRad(la-lat),dLo=toRad(lo-lng);
+        const a=Math.sin(dLa/2)**2+Math.cos(toRad(lat))*Math.cos(toRad(la))*Math.sin(dLo/2)**2;
+        return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+      };
+      els.forEach(e=>{e._d=dist(e.lat,e.lon);});
+      els.sort((a,b)=>a._d-b._d);
+      const near=els[0];
+      let name=(near.tags['name:ja']||near.tags.name||'').replace(/駅$/,'').replace(/\s*Station$/i,'');
+      // 徒歩分数：不動産表記に合わせ 80m=1分 で切り上げ
+      const walkMin=Math.max(1,Math.ceil(near._d/80));
+      return {name,walkMin,distance:Math.round(near._d)};
+    }catch(e){ console.warn('station search error:',e); }
+  }
+  return null;
+}
+
+/* 住所欄から座標を取得し、最寄駅・徒歩分を自動入力 */
+let _autoFilling=false;
+async function autoFillFromAddress(){
+  if(_autoFilling) return;
+  const addrEl=document.getElementById('af-address');
+  const statusEl=document.getElementById('af-geo-status');
+  const addr=(addrEl?.value||'').trim();
+  const setStatus=(text,type)=>{
+    if(!statusEl) return;
+    const colors={info:'#2563eb',ok:'#16a34a',warn:'#d97706',err:'#dc2626'};
+    statusEl.style.cssText=`font-size:11px;margin-top:5px;display:block;color:${colors[type]||colors.info}`;
+    statusEl.textContent=text;
+  };
+  if(!addr){ setStatus('住所を入力してください',{}.warn||'warn'); setStatus('住所を入力してください','warn'); return; }
+  _autoFilling=true;
+  setStatus('📍 住所から位置を検索中...','info');
+  try{
+    const coords=await geocodeAddress(addr);
+    if(!coords){ setStatus('住所から位置を特定できませんでした。番地を省いて試してください','err'); _autoFilling=false; return; }
+    // エリアが空なら住所の頭（都道府県＋市区町村）を補完
+    const areaEl=document.getElementById('af-area');
+    if(areaEl&&!areaEl.value.trim()){
+      const m=normalizeAddress(addr).match(/^(.+?[都道府県])?(.+?[市区町村])/);
+      if(m) areaEl.value=(m[1]||'')+(m[2]||'');
+    }
+    setStatus('🚉 最寄り駅を検索中...','info');
+    const st=await findNearestStation(coords.lat,coords.lng);
+    if(st){
+      const stEl=document.getElementById('af-station');
+      const walkEl=document.getElementById('af-walk-min');
+      if(stEl) stEl.value=st.name;
+      if(walkEl) walkEl.value=st.walkMin;
+      setStatus(`✓ 最寄り駅：${st.name}駅（徒歩約${st.walkMin}分・約${st.distance}m）を自動入力しました`,'ok');
+    } else {
+      setStatus('✓ 位置は特定できましたが、近くに駅が見つかりませんでした','warn');
+    }
+    // 編集中の座標を一時保持（登録時に使用）
+    window._afGeoCoords={lat:coords.lat,lng:coords.lng};
+  }catch(e){
+    setStatus('エラーが発生しました：'+e.message,'err');
+  }
+  _autoFilling=false;
 }
 
 /* ══════════════════════════════════════
@@ -1305,7 +1420,7 @@ function renderCards(){
         ${p.floorplanData?'<div class="prop-vr-badge"><i class="ti ti-vr"></i> VR対応</div>':''}
         ${photos.length>1?`<div style="position:absolute;bottom:6px;left:8px;background:rgba(0,0,0,.5);color:#fff;border-radius:12px;padding:2px 8px;font-size:10px;font-weight:600"><i class="ti ti-photo"></i> ${photos.length}</div>`:''}
         <div class="fav-btn${isFav?' on':''}" data-prop-id="${p.id}" onclick="event.stopPropagation();toggleFav(${p.id},this)">
-          <i class="ti ti-heart${isFav?'-filled':''}"></i>
+          <i class="ti ti-heart"></i>
         </div>
       </div>
       <div class="prop-body">
@@ -1573,16 +1688,24 @@ async function addProperty(){
     }
     resetEditMode();clearAddForm();toggleAddForm();return;
   }
+  // 「駅を自動取得」で取得済みの座標があれば流用
+  const preCoords=window._afGeoCoords||null;
   const newProp={id:nextPropId++,name,area,address,station,walkMin,price:rent,mgmt,deposit,key:keyMoney,madori,size,type,structure,age,features:[],tags:[],description:desc,
-    photoURLs:newPhotoURLs,floorplanURL:window.editedFloorplanThumb||null,floorplanData:window.editedFloorplanData||null,lat:null,lng:null};
+    photoURLs:newPhotoURLs,floorplanURL:window.editedFloorplanThumb||null,floorplanData:window.editedFloorplanData||null,
+    lat:preCoords?preCoords.lat:null,lng:preCoords?preCoords.lng:null};
   PROPS.push(newProp);renderCards();renderAdminPropTable();updateResultsCount();renderMapSidebar();
-  const addrForGeo=normalizeAddress(address)||normalizeAddress(area)||station;
-  if(addrForGeo){
-    geocodeAddress(addrForGeo).then(coords=>{
-      if(coords){newProp.lat=coords.lat;newProp.lng=coords.lng;addMapMarker(newProp);renderMapSidebar();updatePropertyOnAWS(newProp).catch(()=>{});}
-      else showToast('住所から場所を特定できませんでした','warn');
-    });
+  if(newProp.lat&&newProp.lng){
+    addMapMarker(newProp);renderMapSidebar();
+  } else {
+    const addrForGeo=normalizeAddress(address)||normalizeAddress(area)||station;
+    if(addrForGeo){
+      geocodeAddress(addrForGeo).then(coords=>{
+        if(coords){newProp.lat=coords.lat;newProp.lng=coords.lng;addMapMarker(newProp);renderMapSidebar();updatePropertyOnAWS(newProp).catch(()=>{});}
+        else showToast('住所から場所を特定できませんでした','warn');
+      });
+    }
   }
+  window._afGeoCoords=null;
   uploadToAWS(newProp);clearAddForm();toggleAddForm();
 }
 
@@ -1591,6 +1714,8 @@ function clearAddForm(){
   const photoInput=document.getElementById('af-photo');if(photoInput) photoInput.value='';
   const afType=document.getElementById('af-type');if(afType) afType.selectedIndex=0;
   const afStr=document.getElementById('af-structure');if(afStr) afStr.selectedIndex=0;
+  const geoStatus=document.getElementById('af-geo-status');if(geoStatus) geoStatus.style.display='none';
+  window._afGeoCoords=null;
   if(window.clearFloorplan) window.clearFloorplan();
   if(typeof resetEditMode==='function') resetEditMode();
 }
@@ -2039,10 +2164,14 @@ document.addEventListener('DOMContentLoaded', () => {
   // setTimeout(showAdPopup, 3000);
 });
 
-fetchUsers().then(()=>fetchAndRenderProps().then(()=>{
-  const el=document.getElementById('lp-stat-props');
-  if(el) el.textContent=PROPS.length+'件';
-  const countEl=document.getElementById('results-count');
-  if(countEl) countEl.textContent=PROPS.length;
-}));
+fetchUsers().then(()=>{
+  // リロード時のログイン状態復元
+  restoreSession();
+  return fetchAndRenderProps().then(()=>{
+    const el=document.getElementById('lp-stat-props');
+    if(el) el.textContent=PROPS.length+'件';
+    const countEl=document.getElementById('results-count');
+    if(countEl) countEl.textContent=PROPS.length;
+  });
+});
 startPolling();

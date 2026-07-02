@@ -243,6 +243,15 @@ select.finput{cursor:pointer}
 }
 .fav-btn.on{color:var(--red);border-color:var(--red-b);background:#fff}
 .fav-btn:hover{transform:scale(1.12)}
+/* お気に入り済みのハートを塗りつぶし表示（ti-heart-filled非読込のためCSSで代替） */
+.fav-btn.on i{
+  color:var(--red);
+  -webkit-text-stroke:1px var(--red);
+  text-shadow:0 0 0 var(--red);
+}
+.fav-btn.on i::before{ font-weight:900; }
+/* マイページお気に入りリストの削除ボタン内ハート */
+.prop-list-item .btn i.ti-heart{ color:var(--red); }
 .prop-body{padding:12px 14px 10px}
 .prop-price{font-size:16px;font-weight:800;color:var(--blue);margin-bottom:2px;letter-spacing:-.3px}
 .prop-price-sub{font-size:10px;color:#94a3b8;font-weight:400}
@@ -887,4 +896,109 @@ select.finput{cursor:pointer}
   .tab{font-size:9px;padding:9px 5px 7px}
   .hero-title{font-size:18px}
   #top-bottom-ads>div:last-child{grid-template-columns:1fr!important}
+}
+
+/* ══════════════════════════════════════
+   マップ スマホUI（検索バー浮遊＋フィルターシート）
+══════════════════════════════════════ */
+/* デフォルト（PC）では非表示 */
+.map-mobile-overlay{ display:none; }
+.map-filter-sheet{ display:none; }
+
+@media(max-width:768px){
+  /* PC版サイドバーを隠して地図を全面に */
+  .map-wrap{ position:relative; }
+  .map-sidebar{ display:none !important; }
+  .map-area{ height:calc(100vh - 92px); width:100%; }
+
+  /* 地図に重なる検索＆条件バー */
+  .map-mobile-overlay{
+    display:block;
+    position:absolute; top:10px; left:10px; right:10px;
+    z-index:500; pointer-events:none;
+  }
+  .map-mobile-search{
+    pointer-events:auto;
+    display:flex; align-items:center; gap:8px;
+    background:rgba(255,255,255,.82);
+    backdrop-filter:blur(12px);
+    -webkit-backdrop-filter:blur(12px);
+    border:1px solid rgba(255,255,255,.5);
+    border-radius:24px;
+    padding:10px 14px;
+    box-shadow:0 4px 20px rgba(0,0,0,.15);
+  }
+  .map-mobile-search input{
+    flex:1; min-width:0; border:none; background:transparent;
+    font-size:14px; color:var(--navy); outline:none; font-family:inherit;
+  }
+  .map-mobile-search input::placeholder{ color:#94a3b8; }
+  .map-mobile-search button{
+    background:var(--blue); border:none; border-radius:50%;
+    width:30px; height:30px; color:#fff; cursor:pointer;
+    display:flex; align-items:center; justify-content:center; font-size:15px;
+  }
+  /* 条件チップ（検索バーの下） */
+  .map-mobile-filter-chip{
+    pointer-events:auto;
+    margin-top:8px;
+    display:inline-flex; align-items:center; gap:7px;
+    background:rgba(255,255,255,.82);
+    backdrop-filter:blur(12px);
+    -webkit-backdrop-filter:blur(12px);
+    border:1px solid rgba(255,255,255,.5);
+    border-radius:20px;
+    padding:8px 16px;
+    font-size:13px; font-weight:700; color:var(--navy);
+    cursor:pointer; font-family:inherit;
+    box-shadow:0 4px 16px rgba(0,0,0,.12);
+  }
+  .map-mobile-filter-chip i{ color:var(--blue); font-size:15px; }
+  .map-mobile-count{
+    background:var(--blue); color:#fff; border-radius:12px;
+    padding:1px 9px; font-size:11px; font-weight:700;
+  }
+
+  /* 全画面フィルターシート */
+  .map-filter-sheet{
+    display:flex; flex-direction:column;
+    position:fixed; inset:0; z-index:9500;
+    background:var(--surface);
+    transform:translateY(100%);
+    transition:transform .3s cubic-bezier(.4,0,.2,1);
+  }
+  .map-filter-sheet.show{ transform:translateY(0); }
+  .map-filter-sheet-head{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:16px 18px; border-bottom:1px solid var(--border);
+    background:linear-gradient(135deg,var(--blue),var(--blue2));
+  }
+  .map-filter-sheet-head h3{
+    font-size:15px; font-weight:800; color:#fff; margin:0;
+    display:flex; align-items:center; gap:8px;
+  }
+  .map-sheet-close{
+    width:34px; height:34px; border-radius:50%;
+    background:rgba(255,255,255,.2); border:none; color:#fff;
+    font-size:18px; cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .map-filter-sheet-body{
+    flex:1; overflow-y:auto; padding:16px 18px;
+  }
+  .map-filter-sheet-body .map-filter-details{
+    border-bottom:1px solid var(--border); padding:6px 0;
+  }
+  .map-filter-sheet-body .map-filter-details summary{
+    font-size:14px; font-weight:700; padding:12px 0;
+  }
+  .map-filter-sheet-body .ftag{ font-size:13px; padding:7px 14px; }
+  .map-filter-sheet-body .ftag-wrap{ gap:7px; padding:8px 0 12px; }
+  .map-filter-sheet-foot{
+    display:flex; gap:10px; padding:14px 18px;
+    border-top:1px solid var(--border);
+    background:var(--surface);
+    padding-bottom:calc(14px + env(safe-area-inset-bottom,0));
+  }
+  .map-filter-sheet-foot .btn{ padding:13px; font-size:14px; }
 }

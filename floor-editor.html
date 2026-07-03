@@ -7,34 +7,65 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:sans-serif;background:#f0f0f0;color:#222;height:100vh;display:flex;flex-direction:column;overflow:hidden}
-h1{font-size:16px;font-weight:500;padding:8px 12px;background:#fff;border-bottom:1px solid #ddd}
-.toolbar{display:flex;gap:6px;padding:6px 12px;background:#fff;border-bottom:1px solid #ddd;flex-wrap:wrap;align-items:center}
-.btn{padding:6px 12px;border-radius:6px;border:1px solid #ddd;background:#fff;color:#222;cursor:pointer;font-size:12px;white-space:nowrap}
-.btn:hover{background:#f0f0f0}
-.btn.active{background:#e0f5ee;border-color:#1D9E75;color:#0F6E56}
-.btn.primary{background:#1D9E75;color:#fff;border-color:#0F6E56}
-.btn.success{background:#10B981;color:#fff;border-color:#059669}
+:root{
+  --navy:#042C53;
+  --blue:#185FA5;
+  --blue-mid:#3B82F6;
+  --blue-light:#E8F1FB;
+  --green:#1D9E75;
+  --green-dark:#0F6E56;
+  --ink:#1F2A37;
+  --ink-soft:#64748B;
+  --line:#E4E9F0;
+  --surface:#FFFFFF;
+  --surface-2:#F5F8FC;
+  --radius:8px;
+  --radius-sm:6px;
+  --shadow-sm:0 1px 2px rgba(16,42,74,.06);
+  --shadow-md:0 4px 16px rgba(16,42,74,.10);
+}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;background:var(--surface-2);color:var(--ink);height:100vh;display:flex;flex-direction:column;overflow:hidden;-webkit-font-smoothing:antialiased}
+h1{font-size:15px;font-weight:600;padding:11px 16px;background:var(--surface);border-bottom:1px solid var(--line);color:var(--navy);letter-spacing:-.2px;display:flex;align-items:center;gap:8px}
+.toolbar{display:flex;gap:6px;padding:8px 14px;background:var(--surface);border-bottom:1px solid var(--line);flex-wrap:wrap;align-items:center;box-shadow:var(--shadow-sm)}
+.btn{padding:6px 12px;border-radius:var(--radius-sm);border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer;font-size:12px;font-weight:500;white-space:nowrap;transition:all .13s ease;font-family:inherit}
+.btn:hover{background:var(--surface-2);border-color:#CBD6E4}
+.btn.active{background:var(--blue-light);border-color:var(--blue);color:var(--blue)}
+.btn.primary{background:var(--blue);color:#fff;border-color:var(--blue)}
+.btn.primary:hover{background:#14508c}
+.btn.success{background:var(--green);color:#fff;border-color:var(--green)}
+.btn.success:hover{background:var(--green-dark)}
 .btn.danger{background:#EF4444;color:#fff;border-color:#DC2626}
-.zoom-bar{display:flex;gap:4px;align-items:center;margin-left:auto}
-.zoom-btn{width:28px;height:28px;border-radius:6px;border:1px solid #ddd;background:#fff;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center}
-.zoom-label{font-size:11px;color:#888;min-width:36px;text-align:center}
+.zoom-bar{display:flex;gap:4px;align-items:center;margin-left:8px}
+/* ドア種類サブツールバー(ドアモード時のみ表示) */
+.subtoolbar{display:none;align-items:center;gap:6px;padding:7px 14px;background:var(--blue-light);border-bottom:1px solid var(--line);flex-wrap:wrap}
+.subtoolbar.show{display:flex}
+.sub-label{font-size:12px;font-weight:600;color:var(--blue);white-space:nowrap}
+.sub-hint{font-size:11px;color:var(--ink-soft);margin-left:auto}
+.doortype-btn{padding:5px 11px;border-radius:var(--radius-sm);border:1px solid #B9D4EE;background:var(--surface);color:var(--ink);cursor:pointer;font-size:12px;font-weight:500;white-space:nowrap;transition:all .13s}
+.doortype-btn:hover{border-color:var(--blue);background:#fff}
+.doortype-btn.active{background:var(--blue);color:#fff;border-color:var(--blue)}
+.zoom-btn{width:28px;height:28px;border-radius:var(--radius-sm);border:1px solid var(--line);background:var(--surface);cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;color:var(--ink-soft);transition:all .13s}
+.zoom-btn:hover{background:var(--surface-2);color:var(--blue)}
+.zoom-label{font-size:11px;color:var(--ink-soft);min-width:36px;text-align:center}
 .main{display:flex;flex:1;overflow:hidden}
-.left-panel{width:50%;display:flex;flex-direction:column;border-right:1px solid #ddd}
-.right-panel{width:50%;display:flex;flex-direction:column;background:#1a1a2e}
-.canvas-wrap{flex:1;position:relative;overflow:hidden;background:#fff;min-height:0}
+.left-panel{flex:1;display:flex;flex-direction:column;border-right:1px solid var(--line);min-width:0}
+.right-panel{width:44%;display:flex;flex-direction:column;background:#0F1B2D;transition:width .25s ease;flex-shrink:0}
+/* 3Dパネル 折りたたみ */
+.right-panel.collapsed{width:0;overflow:hidden;border:none}
+.left-panel.full{width:100%}
+.canvas-wrap{flex:1;position:relative;overflow:hidden;background:var(--surface);min-height:0}
 canvas.map-canvas{display:block;position:absolute;top:0;left:0;width:100%;height:100%}
 #threeCanvas{width:100%;height:100%;display:block}
-.status-bar{padding:4px 10px;font-size:11px;color:#888;background:#fafafa;border-top:1px solid #eee}
-.three-toolbar{display:flex;gap:6px;padding:6px 10px;background:#16213e;border-bottom:1px solid #0f3460}
-.three-btn{padding:4px 10px;border-radius:4px;border:1px solid #0f3460;background:#16213e;color:#aaa;cursor:pointer;font-size:11px}
-.three-btn:hover{background:#0f3460;color:#fff}
-.three-btn.active{background:#1D9E75;color:#fff;border-color:#0F6E56}
-.furniture-panel{padding:8px 12px;background:#fff;border-top:1px solid #ddd;max-height:160px;overflow-y:auto}
-.furniture-panel h3{font-size:12px;color:#666;margin-bottom:6px}
+.status-bar{padding:6px 12px;font-size:11px;color:var(--ink-soft);background:var(--surface-2);border-top:1px solid var(--line)}
+.three-toolbar{display:flex;gap:6px;padding:8px 12px;background:#0A1420;border-bottom:1px solid #1C2E44}
+.three-btn{padding:5px 11px;border-radius:var(--radius-sm);border:1px solid #1C2E44;background:#132238;color:#9FB3CC;cursor:pointer;font-size:11px;font-weight:500;transition:all .13s}
+.three-btn:hover{background:#1C2E44;color:#fff}
+.three-btn.active{background:var(--green);color:#fff;border-color:var(--green-dark)}
+.furniture-panel{padding:10px 14px;background:var(--surface);border-top:1px solid var(--line);max-height:160px;overflow-y:auto}
+.furniture-panel h3{font-size:12px;color:var(--ink-soft);margin-bottom:6px;font-weight:500}
 .furniture-cats{display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap}
-.cat-btn{padding:3px 8px;border-radius:4px;border:1px solid #ddd;background:#fff;cursor:pointer;font-size:11px}
-.cat-btn.active{background:#E0F2FE;border-color:#0891B2;color:#0369A1}
+.cat-btn{padding:4px 10px;border-radius:var(--radius-sm);border:1px solid var(--line);background:var(--surface);cursor:pointer;font-size:11px;font-weight:500;color:var(--ink-soft);transition:all .13s}
+.cat-btn.active{background:var(--blue-light);border-color:var(--blue);color:var(--blue)}
 .furniture-grid{display:flex;gap:4px;flex-wrap:wrap}
 .furniture-item{border:1px solid #ddd;border-radius:6px;padding:4px 6px;text-align:center;cursor:pointer;font-size:10px;background:#fff;min-width:56px}
 .furniture-item:hover{background:#f0f0f0}
@@ -78,6 +109,14 @@ canvas.map-canvas{display:block;position:absolute;top:0;left:0;width:100%;height
   align-items:center;
   font-size:11px;
   color:#444;
+  white-space:nowrap;       /* ★文字が縦に折り返されないように */
+  max-width:calc(100% - 28px); /* キャンバスからはみ出ない */
+}
+.bg-transform-bar > * {
+  flex-shrink:0;             /* 内部要素を縮ませない */
+}
+.bg-transform-bar span {
+  white-space:nowrap;
 }
 .bg-transform-bar.show{display:flex}
 .bg-transform-bar input[type=range]{width:110px;accent-color:#1D9E75}
@@ -96,9 +135,12 @@ canvas.map-canvas{display:block;position:absolute;top:0;left:0;width:100%;height
   <button class="btn" id="modeEdit" onclick="setMode('edit')">🔧 編集</button>
   <button class="btn" id="modeDoor" onclick="setMode('door')">🚪 ドア</button>
   <button class="btn" id="modeWindow" onclick="setMode('window')">🪟 窓</button>
+  <button class="btn" id="modePassage" onclick="setMode('passage')">🚧 通路</button>
+  <button class="btn" id="modeWall" onclick="setMode('wall')">🧱 壁</button>
   <button class="btn" id="modeFurniture" onclick="setMode('furniture')">🛋 家具</button>
   <button class="btn" id="modePan" onclick="setMode('pan')">✋ 移動</button>
   <button class="btn" id="modeBg" onclick="setMode('bg')" style="display:none">🖼 背景調整</button>
+  <button class="btn" id="modeScale" onclick="setMode('scale')">📐 全体サイズ</button>
   <button class="btn" onclick="clearAll()">🗑</button>
   <button class="btn primary" onclick="sendData()">▶ Unity送信</button>
   <!-- 背景写真コントロール -->
@@ -111,12 +153,24 @@ canvas.map-canvas{display:block;position:absolute;top:0;left:0;width:100%;height
     <input type="range" id="bgOpacity" min="0" max="100" value="50" style="display:none">
     <button class="bg-clear" id="bgClear" style="display:none">✕</button>
   </div>
+  <button class="btn" id="toggle3D" onclick="toggle3DPanel()" style="margin-left:auto">🧊 3Dビュー</button>
   <div class="zoom-bar">
     <button class="zoom-btn" onclick="zoomIn()">＋</button>
     <span class="zoom-label" id="zoomLabel">100%</span>
     <button class="zoom-btn" onclick="zoomOut()">－</button>
     <button class="zoom-btn" onclick="resetView()">⌂</button>
   </div>
+</div>
+<!-- ドアモード時だけ表示: ドア種類選択サブツールバー -->
+<div class="subtoolbar" id="doorSubtoolbar">
+  <span class="sub-label">🚪 設置するドアの種類:</span>
+  <button class="doortype-btn active" data-dt="swing_left"      onclick="selectDoorType('swing_left',this)">↙ 左開き(内)</button>
+  <button class="doortype-btn"        data-dt="swing_left_out"  onclick="selectDoorType('swing_left_out',this)">↖ 左開き(外)</button>
+  <button class="doortype-btn"        data-dt="swing_right"     onclick="selectDoorType('swing_right',this)">↘ 右開き(内)</button>
+  <button class="doortype-btn"        data-dt="swing_right_out" onclick="selectDoorType('swing_right_out',this)">↗ 右開き(外)</button>
+  <button class="doortype-btn"        data-dt="slide_left"      onclick="selectDoorType('slide_left',this)">⇤ 引き戸(左)</button>
+  <button class="doortype-btn"        data-dt="slide_right"     onclick="selectDoorType('slide_right',this)">⇥ 引き戸(右)</button>
+  <span class="sub-hint">設置後も一覧から個別に変更できます</span>
 </div>
 <div class="main">
   <!-- 左：2D -->
@@ -128,12 +182,26 @@ canvas.map-canvas{display:block;position:absolute;top:0;left:0;width:100%;height
         <span class="bt-hint">背景:</span>
         <span>サイズ</span>
         <input type="range" id="bgScaleSlider" min="10" max="500" value="100">
-        <span class="bt-label" id="bgScaleLabel">100%</span>
+        <input type="number" id="bgScaleInput" min="10" max="500" step="1" value="100"
+               style="width:54px;padding:2px 4px;font-size:11px;border:1px solid #ddd;border-radius:4px;text-align:center">
+        <span class="bt-label">%</span>
         <div class="bt-divider"></div>
         <button onclick="resetBgTransform()">↺ リセット</button>
         <button onclick="fitBgToCanvas()">⛶ 中央フィット</button>
         <div class="bt-divider"></div>
         <span class="bt-hint">ドラッグで移動 / ホイールで拡縮</span>
+      </div>
+      <!-- 全体サイズ調整用の floating バー -->
+      <div class="bg-transform-bar" id="scaleTransformBar">
+        <span class="bt-hint">全体サイズ:</span>
+        <input type="range" id="globalScaleSlider" min="10" max="500" value="100">
+        <input type="number" id="globalScaleInput" min="10" max="500" step="1" value="100"
+               style="width:54px;padding:2px 4px;font-size:11px;border:1px solid #ddd;border-radius:4px;text-align:center">
+        <span class="bt-label">%</span>
+        <div class="bt-divider"></div>
+        <button onclick="resetGlobalScale()">↺ リセット</button>
+        <div class="bt-divider"></div>
+        <span class="bt-hint">部屋・壁・家具を一括で拡縮</span>
       </div>
     </div>
     <div class="furniture-panel" id="furniturePanel" style="display:none">
@@ -147,11 +215,11 @@ canvas.map-canvas{display:block;position:absolute;top:0;left:0;width:100%;height
       </div>
       <div class="furniture-grid" id="furnitureGrid"></div>
     </div>
-    <div id="roomList" style="height:150px;overflow-y:auto;border-top:2px solid #1D9E75;background:#fafafa;font-size:11px;flex-shrink:0"></div>
+    <div id="roomList" style="height:150px;overflow-y:auto;border-top:2px solid var(--blue);background:var(--surface-2);font-size:11px;flex-shrink:0"></div>
     <div class="status-bar" id="status">囲みモード：ドラッグで部屋を描く</div>
   </div>
   <!-- 右：3D -->
-  <div class="right-panel">
+  <div class="right-panel collapsed" id="rightPanel">
     <div class="three-toolbar">
       <span style="color:#aaa;font-size:11px;margin-right:4px">3Dビュー</span>
       <button class="three-btn" onclick="resetCamera()">カメラリセット</button>
@@ -192,6 +260,13 @@ var canvas=document.getElementById('c');
 var ctx=canvas.getContext('2d');
 var GRID=25,BASE_SCALE=50;
 var COLORS=['#1D9E75','#185FA5','#BA7517','#993556','#533AB7','#0891B2','#65A30D','#DC2626'];
+/* 色選択パレット用(部屋の色変更で使用) */
+var COLOR_PALETTE=[
+  '#1D9E75','#10B981','#65A30D','#84CC16',  // 緑系
+  '#185FA5','#0891B2','#3B82F6','#6366F1',  // 青系
+  '#533AB7','#9333EA','#993556','#DC2626',  // 紫・赤系
+  '#BA7517','#D97706','#92400E','#78716C'   // 茶・グレー系
+];
 var FURNITURE_DEFS={
   living:[
     {id:'sofa',name:'ソファ',icon:'🛋',w:2.0,d:0.9,color:'#8B6914',h:0.8},
@@ -238,10 +313,17 @@ var scale=1,offsetX=0,offsetY=0;
 var isPanning=false,panStartX=0,panStartY=0,panOriginX=0,panOriginY=0;
 var draggingOpening=null,draggingFurniture=null;
 var dragFurnitureOffX=0,dragFurnitureOffY=0;
+/* ━━━ 独立壁(部屋に属さない間仕切り壁) ━━━ */
+var walls=[];          // {id, x1, y1, x2, y2}
+var nextWallId=0;
+var wallStartPt=null;  // 連続入力中の始点(キャンバス座標)
+var cursorX=0, cursorY=0;
 /* ━━━ A: Shiftキーでスナップ一時無効化 ━━━ */
 var shiftHeld=false;
 /* ━━━ C: 頂点・矩形角の編集モード用 ━━━ */
 var draggingVertex=null; // {roomIndex, type:'poly'|'rect', vertexIndex|corner}
+var currentDoorType='swing_left'; // ツールバーで選択中のドア種類(新規ドアに適用)
+var openingPreview=null; // ドア/窓/通路モードで壁ホバー時のプレビュー情報
 
 /* ━━━ 背景写真関連 ━━━ */
 var bgImage=null;       // Imageオブジェクト
@@ -301,6 +383,10 @@ window.addEventListener('message', function(e){
           furnitures = msg.data.furnitures.map(function(f){return Object.assign({},f);});
           furnitureCount = furnitures.reduce(function(m,f){return Math.max(m,(f.id||0)+1);},0);
         }
+        if(Array.isArray(msg.data.walls)){
+          walls = msg.data.walls.map(function(w){return Object.assign({},w);});
+          nextWallId = walls.reduce(function(m,w){return Math.max(m,(w.id||0)+1);},0);
+        }
         draw(); rebuild3D(); renderRoomList();
       }catch(err){console.error('既存データの読み込みに失敗:',err);}
     }
@@ -323,7 +409,7 @@ function saveAndClose(){
   try{ thumb=generateThumbnail(); }catch(e){console.warn('サムネ生成失敗:',e);}
   postToParent({
     type:'vr-editor-save',
-    data: {rooms:rooms, furnitures:furnitures},
+    data: {rooms:rooms, furnitures:furnitures, walls:walls},
     thumbnail: thumb
   });
 }
@@ -412,7 +498,7 @@ document.getElementById('bgFile').addEventListener('change', function(e){
       /* 初期位置・スケールをリセット */
       bgX=0; bgY=0; bgScale=1;
       document.getElementById('bgScaleSlider').value=100;
-      document.getElementById('bgScaleLabel').textContent='100%';
+      var bgInp=document.getElementById('bgScaleInput'); if(bgInp) bgInp.value=100;
       document.getElementById('bgClear').style.display='inline-block';
       document.getElementById('bgOpacity').style.display='inline-block';
       document.getElementById('bgOpacityLabel').style.display='inline-block';
@@ -443,18 +529,34 @@ document.getElementById('bgClear').addEventListener('click', function(){
   draw();
 });
 
-/* ━━━ 背景画像のスケールスライダー(キャンバス中央基準) ━━━ */
-document.getElementById('bgScaleSlider').addEventListener('input', function(e){
+/* ━━━ 背景画像のスケール適用(キャンバス中央基準) ━━━ */
+function applyBgScale(newScale){
   if(!bgImage) return;
-  var newScale=parseInt(e.target.value)/100;
-  /* キャンバスの中央(ワールド座標)を基準にスケール */
   var cx=canvas.width/2, cy=canvas.height/2;
   var w=toWorld(cx,cy);
   bgX = w.x - (w.x - bgX) * (newScale/bgScale);
   bgY = w.y - (w.y - bgY) * (newScale/bgScale);
   bgScale=newScale;
-  document.getElementById('bgScaleLabel').textContent=Math.round(bgScale*100)+'%';
+  var pct=Math.round(bgScale*100);
+  var sl=document.getElementById('bgScaleSlider'); if(sl) sl.value=pct;
+  var inp=document.getElementById('bgScaleInput'); if(inp) inp.value=pct;
   draw();
+}
+document.getElementById('bgScaleSlider').addEventListener('input', function(e){
+  applyBgScale(parseInt(e.target.value)/100);
+});
+document.getElementById('bgScaleInput').addEventListener('input', function(e){
+  var pct=parseInt(e.target.value);
+  if(isNaN(pct)) return;
+  pct=Math.max(10,Math.min(500,pct));
+  applyBgScale(pct/100);
+});
+document.getElementById('bgScaleInput').addEventListener('change', function(e){
+  var pct=parseInt(e.target.value);
+  if(isNaN(pct)) pct=100;
+  pct=Math.max(10,Math.min(500,pct));
+  e.target.value=pct;
+  applyBgScale(pct/100);
 });
 
 /* ━━━ 背景画像のリセット ━━━ */
@@ -462,7 +564,7 @@ function resetBgTransform(){
   if(!bgImage) return;
   bgX=0; bgY=0; bgScale=1;
   document.getElementById('bgScaleSlider').value=100;
-  document.getElementById('bgScaleLabel').textContent='100%';
+  document.getElementById('bgScaleInput').value=100;
   draw();
 }
 
@@ -486,7 +588,7 @@ function fitBgToCanvas(){
   document.getElementById('bgScaleSlider').min = Math.min(10, pct);
   document.getElementById('bgScaleSlider').max = Math.max(500, pct*3);
   document.getElementById('bgScaleSlider').value = pct;
-  document.getElementById('bgScaleLabel').textContent = pct+'%';
+  var bgFitInp=document.getElementById('bgScaleInput'); if(bgFitInp) bgFitInp.value=pct;
   draw();
 }
 
@@ -580,12 +682,34 @@ function animate(){
   requestAnimationFrame(animate);
   var w=threeCanvas.parentElement.clientWidth;
   var h=threeCanvas.parentElement.clientHeight;
+  /* パネルが閉じている(幅0)ときは描画スキップ */
+  if(w<10||h<10) return;
   if(renderer.domElement.width!==w||renderer.domElement.height!==h){
     renderer.setSize(w,h);
     camera.aspect=w/h;
     camera.updateProjectionMatrix();
   }
   renderer.render(scene,camera);
+}
+/* ━━━ 3Dパネルの開閉トグル ━━━ */
+function toggle3DPanel(){
+  var panel=document.getElementById('rightPanel');
+  var btn=document.getElementById('toggle3D');
+  var isCollapsed=panel.classList.toggle('collapsed');
+  if(isCollapsed){
+    btn.classList.remove('active');
+  } else {
+    btn.classList.add('active');
+    rebuild3D();
+  }
+  /* ★重要: パネル幅が変わるので2Dキャンバスの内部解像度を再計算
+     (これをしないとクリック座標がズレて壁などが変な位置に出る) */
+  resize2d();
+  /* transition(0.25s)完了後にもう一度合わせる */
+  setTimeout(function(){
+    resize2d();
+    if(!isCollapsed && typeof resetCamera==='function') resetCamera();
+  }, 280);
 }
 function rebuild3D(){
   threeMeshes.rooms.forEach(function(m){scene.remove(m);});
@@ -661,12 +785,13 @@ function rebuild3D(){
             var mat=new THREE.MeshLambertMaterial({color:0x87CEEB,opacity:0.5,transparent:true});
             var m=new THREE.Mesh(g,mat);m.position.set(oMidX,sill+edgeOpen.height/2,oMidZ);m.rotation.y=angle;
             scene.add(m);threeMeshes.rooms.push(m);
-          } else {
-            /* ドアタイプで色分け: slide=緑系, swing_left=茶, swing_right=濃茶 */
+          } else if(edgeOpen.type==='door') {
+            /* ドアタイプで色分け: slide=緑系, swing_left/_out=茶, swing_right/_out=濃茶 */
             var dt = edgeOpen.doorType||'swing_left';
             var isSlide = (dt==='slide'||dt==='slide_left'||dt==='slide_right');
+            var isRightHinge = (dt==='swing_right'||dt==='swing_right_out');
             var doorColor = isSlide ? 0x4FA478
-                          : dt==='swing_right' ? 0x6B3410
+                          : isRightHinge ? 0x6B3410
                           : 0x8B4513;
             var g=new THREE.BoxGeometry(0.05,edgeOpen.height,edgeOpen.width);
             var mat=new THREE.MeshLambertMaterial({color:doorColor});
@@ -674,12 +799,14 @@ function rebuild3D(){
             scene.add(m);threeMeshes.rooms.push(m);
             /* 開き方向のヒント線(スイングドアのみ): ヒンジ側から床に小さなマーカー */
             if(!isSlide){
-              var isLeftHinge = dt !== 'swing_right';
+              var isLeftHinge = !isRightHinge;
               var hingeSign = isLeftHinge ? -1 : 1;
               var hingeX = oMidX + dx*(hingeSign*edgeOpen.width/2);
               var hingeZ = oMidZ + dz*(hingeSign*edgeOpen.width/2);
               var markGeo=new THREE.SphereGeometry(0.08,8,6);
-              var markMat=new THREE.MeshLambertMaterial({color:0xff6600});
+              /* 内開き=橙、外開き=水色 */
+              var isOut = (dt==='swing_left_out'||dt==='swing_right_out');
+              var markMat=new THREE.MeshLambertMaterial({color: isOut ? 0x38BDF8 : 0xff6600});
               var mark=new THREE.Mesh(markGeo,markMat);
               mark.position.set(hingeX, 0.08, hingeZ);
               scene.add(mark);threeMeshes.rooms.push(mark);
@@ -711,7 +838,7 @@ function rebuild3D(){
           var isNS=o.wall==='North'||o.wall==='South';
           var wallLen=isNS?rw:rd;
           var along=(o.offsetAlongWall>0?o.offsetAlongWall:0.5)*wallLen;
-          doorHoles.push({wall:o.wall,center:along,width:o.width,height:o.height||2.0,doorType:o.doorType});
+          doorHoles.push({wall:o.wall,center:along,width:o.width,height:o.height||2.0,doorType:o.doorType,type:o.type});
         }
       });
       var wallDefs=[
@@ -759,25 +886,29 @@ function rebuild3D(){
               m.position.set(wd.isNS?holeCenter:wd.wallX, h.height+topH/2, wd.isNS?wd.wallZ:holeCenter);
               scene.add(m);threeMeshes.rooms.push(m);
             }
+            /* passage(通路) はドア本体を作らない */
+            if(h.type !== 'door') return;
             var doorGeo=new THREE.BoxGeometry(wd.isNS?h.width:0.05,h.height,wd.isNS?0.05:h.width);
             /* ドアタイプで色分け */
             var hdt = h.doorType||'swing_left';
             var hIsSlide = (hdt==='slide'||hdt==='slide_left'||hdt==='slide_right');
+            var hIsRightHinge = (hdt==='swing_right'||hdt==='swing_right_out');
             var doorColor = hIsSlide ? 0x4FA478
-                          : hdt==='swing_right' ? 0x6B3410
+                          : hIsRightHinge ? 0x6B3410
                           : 0x8B4513;
             var dMat=new THREE.MeshLambertMaterial({color:doorColor});
             var dMesh=new THREE.Mesh(doorGeo,dMat);
             dMesh.position.set(wd.isNS?holeCenter:wd.wallX, h.height/2, wd.isNS?wd.wallZ:holeCenter);
             scene.add(dMesh);threeMeshes.rooms.push(dMesh);
-            /* マーカー: スイングはヒンジ位置に橙、引き戸はスライド方向に緑 */
+            /* マーカー: スイングはヒンジ位置に橙(内)/水色(外)、引き戸はスライド方向に緑 */
             if(!hIsSlide){
-              var isLeftHinge = hdt !== 'swing_right';
+              var isLeftHinge = !hIsRightHinge;
               var hingeSign = isLeftHinge ? -1 : 1;
               var markerX = wd.isNS ? (holeCenter + hingeSign*h.width/2) : wd.wallX;
               var markerZ = wd.isNS ? wd.wallZ : (holeCenter + hingeSign*h.width/2);
               var markGeo = new THREE.SphereGeometry(0.08,8,6);
-              var markMat = new THREE.MeshLambertMaterial({color:0xff6600});
+              var hIsOut = (hdt==='swing_left_out'||hdt==='swing_right_out');
+              var markMat = new THREE.MeshLambertMaterial({color: hIsOut ? 0x38BDF8 : 0xff6600});
               var mark = new THREE.Mesh(markGeo, markMat);
               mark.position.set(markerX, 0.08, markerZ);
               scene.add(mark); threeMeshes.rooms.push(mark);
@@ -818,6 +949,23 @@ function rebuild3D(){
     line.rotation.copy(mesh.rotation);
     scene.add(line);threeMeshes.furniture.push(line);
   });
+  /* ━━━ 独立壁の3D描画 ━━━ */
+  var wallMatFree=new THREE.MeshLambertMaterial({color:0xD0CCC0});
+  walls.forEach(function(wl){
+    var x1=wl.x1/BASE_SCALE, z1=-wl.y1/BASE_SCALE;
+    var x2=wl.x2/BASE_SCALE, z2=-wl.y2/BASE_SCALE;
+    var cx=(x1+x2)/2, cz=(z1+z2)/2;
+    var dx=x2-x1, dz=z2-z1;
+    var len=Math.sqrt(dx*dx+dz*dz);
+    if(len<0.01) return;
+    var angle=Math.atan2(dx,dz);
+    var wh=2.4, wt=0.05;
+    var g=new THREE.BoxGeometry(wt, wh, len);
+    var m=new THREE.Mesh(g, wallMatFree);
+    m.position.set(cx, wh/2, cz);
+    m.rotation.y=angle;
+    scene.add(m);threeMeshes.rooms.push(m);
+  });
 }
 /* ===== 2D ===== */
 function resize2d(){
@@ -830,6 +978,11 @@ function resize2d(){
 }
 window.addEventListener('resize',function(){resize2d();});
 resize2d();
+/* キャンバス親要素の幅変化を監視して内部解像度を自動追従(パネル開閉対策) */
+if(typeof ResizeObserver!=='undefined'){
+  var ro=new ResizeObserver(function(){resize2d();});
+  ro.observe(wrap);
+}
 document.addEventListener('keydown',function(e){
   if(e.key==='Shift' && !shiftHeld){
     shiftHeld=true;
@@ -840,6 +993,12 @@ document.addEventListener('keydown',function(e){
   }
   if(e.key==='Enter'&&mode==='vertex'&&vertices.length>=3){confirmVertex();}
   if(e.key==='Escape'&&mode==='vertex'){vertices=[];draw();document.getElementById('status').textContent='キャンセルしました';}
+  /* ━━━ 壁モード中の ESC で中断 ━━━ */
+  if(e.key==='Escape'&&mode==='wall'&&wallStartPt){
+    wallStartPt=null;
+    draw();
+    document.getElementById('status').textContent='壁入力を中断しました';
+  }
   /* ━━━ 囲みモード中の ESC でキャンセル ━━━ */
   if(e.key==='Escape'&&mode==='rect'&&drawing){
     drawing=false;
@@ -880,7 +1039,7 @@ function setMode(m){
   mode=m;
   var btns=document.querySelectorAll('.toolbar .btn');
   for(var i=0;i<btns.length;i++)btns[i].classList.remove('active');
-  var ids={rect:'modeRect',vertex:'modeVertex',edit:'modeEdit',door:'modeDoor',window:'modeWindow',furniture:'modeFurniture',pan:'modePan',bg:'modeBg'};
+  var ids={rect:'modeRect',vertex:'modeVertex',edit:'modeEdit',door:'modeDoor',window:'modeWindow',passage:'modePassage',wall:'modeWall',furniture:'modeFurniture',pan:'modePan',bg:'modeBg',scale:'modeScale'};
   if(ids[m]){var el=document.getElementById(ids[m]); if(el) el.classList.add('active');}
   var hints={
     rect:'ドラッグして部屋を描く (Shiftでスナップ無効)',
@@ -888,9 +1047,12 @@ function setMode(m){
     edit:'🔧 編集モード: 頂点をドラッグして微調整 / 多角形なら辺の中点クリックで頂点追加 / Deleteで削除 (Shiftでスナップ無効)',
     door:'壁クリックでドア追加→ドラッグで調整',
     window:'壁クリックで窓追加→ドラッグで調整',
+    passage:'壁クリックで通路を作成(壁を完全に壊す)→ドラッグで幅調整',
+    wall:'クリックで壁の始点 → もう一度クリックで終点(連続入力可能) / ESCで中断',
     furniture:'家具を選んでクリック配置/ドラッグ移動/Rで回転',
-    pan:'ドラッグで移動',
-    bg:'背景調整モード: ドラッグで移動 / ホイールで拡縮 / 下のバーで微調整'
+    pan:'ドラッグで移動 / 中クリックドラッグで任意モードから移動 / Shift+ホイールで横 / Ctrl+ホイールで縦',
+    bg:'背景調整モード: ドラッグで移動 / ホイールで拡縮 / 下のバーで微調整',
+    scale:'全体サイズモード: スライダーで部屋・壁・家具を一括で拡縮'
   };
   document.getElementById('status').textContent=hints[m]||'';
   document.getElementById('furniturePanel').style.display=m==='furniture'?'flex':'none';
@@ -899,12 +1061,29 @@ function setMode(m){
   var bar=document.getElementById('bgTransformBar');
   if(m==='bg' && bgImage){ bar.classList.add('show'); }
   else { bar.classList.remove('show'); }
+  /* 全体サイズバーの表示切り替え + モード進入/退出時のバックアップ管理 */
+  var scaleBar=document.getElementById('scaleTransformBar');
+  if(m==='scale'){
+    enterScaleMode();
+    scaleBar.classList.add('show');
+  } else {
+    if(scaleBar.classList.contains('show')){ commitScaleMode(); }
+    scaleBar.classList.remove('show');
+  }
+  /* ドアモード時だけドア種類サブツールバーを表示 */
+  var doorSub=document.getElementById('doorSubtoolbar');
+  if(doorSub){
+    if(m==='door') doorSub.classList.add('show');
+    else doorSub.classList.remove('show');
+  }
   /* カーソル */
   if(m==='pan') wrap.style.cursor='grab';
   else if(m==='bg') wrap.style.cursor='move';
   else if(m==='edit') wrap.style.cursor='pointer';
   else wrap.style.cursor='crosshair';
   if(m==='furniture')renderFurnitureGrid();
+  /* サブツールバーの表示切り替えでキャンバス高さが変わるため再計算 */
+  if(typeof resize2d==='function') setTimeout(resize2d, 0);
 }
 function selectCat(cat,btn){
   currentCat=cat;
@@ -980,16 +1159,49 @@ function getOpeningCanvasPos(room,opening){
   return{x:ox,y:oy};
 }
 function findOpeningAt(wx,wy){
-  var hitRadius=15/scale;
+  var centerHit=15/scale;
+  var endHit=10/scale;
   for(var ri=0;ri<rooms.length;ri++){
     var openings=rooms[ri].openings||[];
     for(var oi=0;oi<openings.length;oi++){
       var pos=getOpeningCanvasPos(rooms[ri],openings[oi]);
       var dx=wx-pos.x,dy=wy-pos.y;
-      if(Math.sqrt(dx*dx+dy*dy)<hitRadius)return{roomIndex:ri,openingIndex:oi};
+      if(Math.sqrt(dx*dx+dy*dy)<centerHit) return{roomIndex:ri,openingIndex:oi,handle:'center'};
+      /* 開口の左右端(幅変更ハンドル) */
+      var ep=getOpeningEndpoints(rooms[ri],openings[oi]);
+      if(ep){
+        var lDx=wx-ep.left.x, lDy=wy-ep.left.y;
+        if(Math.sqrt(lDx*lDx+lDy*lDy)<endHit) return{roomIndex:ri,openingIndex:oi,handle:'left'};
+        var rDx=wx-ep.right.x, rDy=wy-ep.right.y;
+        if(Math.sqrt(rDx*rDx+rDy*rDy)<endHit) return{roomIndex:ri,openingIndex:oi,handle:'right'};
+      }
     }
   }
   return null;
+}
+
+/* 開口の左右端のキャンバス座標を返す(幅変更ハンドルの当たり判定+描画用) */
+function getOpeningEndpoints(room,o){
+  var pos=getOpeningCanvasPos(room,o);
+  var halfW=(o.width||0.9)*BASE_SCALE/2;
+  if(o.edgeIndex!==undefined && room.vertices){
+    var verts=room.vertices,i=o.edgeIndex,j=(i+1)%verts.length;
+    var dx=verts[j].x-verts[i].x, dy=verts[j].y-verts[i].y;
+    var len=Math.sqrt(dx*dx+dy*dy);
+    if(len<0.01) return null;
+    var ndx=dx/len, ndy=dy/len;
+    return {
+      left:  {x: pos.x - ndx*halfW, y: pos.y - ndy*halfW},
+      right: {x: pos.x + ndx*halfW, y: pos.y + ndy*halfW}
+    };
+  } else {
+    var isNS=o.wall==='North'||o.wall==='South';
+    if(isNS){
+      return {left:{x:pos.x-halfW,y:pos.y}, right:{x:pos.x+halfW,y:pos.y}};
+    } else {
+      return {left:{x:pos.x,y:pos.y-halfW}, right:{x:pos.x,y:pos.y+halfW}};
+    }
+  }
 }
 function findFurnitureAt(wx,wy){
   for(var i=furnitures.length-1;i>=0;i--){
@@ -1034,23 +1246,45 @@ function findVertexAt(wx,wy){
   return null;
 }
 
-/* ━━━ 編集モード: 多角形の辺の中点ヒット判定(クリックで頂点追加用) ━━━ */
+/* ━━━ 編集モード: 辺上の最近点を探す(クリックで頂点追加用)
+   辺の中点だけでなく、辺のどこをクリックしても頂点を追加できる。
+   矩形部屋も4辺を対象にする(必要時に多角形化) ━━━ */
 function findPolygonEdgeMidpointAt(wx,wy){
-  var hitRadius=10/scale;
+  var hitDist=10/scale;  // 辺からこの距離以内なら追加
+  var vertexAvoid=14/scale; // 頂点付近は除外(頂点ドラッグと競合しないよう)
+  var best=null, bestD=hitDist;
   for(var ri=rooms.length-1;ri>=0;ri--){
     var r=rooms[ri];
-    if(!r.vertices || r.vertices.length<3) continue;
-    for(var i=0;i<r.vertices.length;i++){
-      var j=(i+1)%r.vertices.length;
-      var mx=(r.vertices[i].x + r.vertices[j].x)/2;
-      var my=(r.vertices[i].y + r.vertices[j].y)/2;
-      var dx=wx-mx, dy=wy-my;
-      if(Math.sqrt(dx*dx+dy*dy)<hitRadius){
-        return {roomIndex:ri, edgeIndex:i, mx:mx, my:my};
+    /* 頂点リストを用意(矩形はその場で仮想4頂点を作る) */
+    var verts;
+    if(r.vertices && r.vertices.length>=3){
+      verts=r.vertices;
+    } else {
+      verts=[
+        {x:r.wx,      y:r.wy},
+        {x:r.wx+r.ww, y:r.wy},
+        {x:r.wx+r.ww, y:r.wy+r.wh},
+        {x:r.wx,      y:r.wy+r.wh}
+      ];
+    }
+    for(var i=0;i<verts.length;i++){
+      var j=(i+1)%verts.length;
+      var ax=verts[i].x, ay=verts[i].y, bx=verts[j].x, by=verts[j].y;
+      var abx=bx-ax, aby=by-ay;
+      var lenSq=abx*abx+aby*aby;
+      if(lenSq<1) continue;
+      /* 点(wx,wy)を線分に投影 */
+      var t=((wx-ax)*abx+(wy-ay)*aby)/lenSq;
+      if(t<0.12||t>0.88) continue; // 端(頂点付近)は除外
+      var px=ax+abx*t, py=ay+aby*t;
+      var d=Math.sqrt((wx-px)*(wx-px)+(wy-py)*(wy-py));
+      if(d<bestD){
+        bestD=d;
+        best={roomIndex:ri, edgeIndex:i, mx:px, my:py, isRect:!(r.vertices&&r.vertices.length>=3)};
       }
     }
   }
-  return null;
+  return best;
 }
 
 /* ━━━ 矩形を多角形に変換(編集時に必要に応じて呼ぶ) ━━━ */
@@ -1103,7 +1337,19 @@ canvas.addEventListener('wheel',function(e){
     if(pct < parseInt(slider.min)) slider.min=pct;
     if(pct > parseInt(slider.max)) slider.max=pct;
     slider.value=pct;
-    document.getElementById('bgScaleLabel').textContent=pct+'%';
+    var inp2=document.getElementById('bgScaleInput'); if(inp2) inp2.value=pct;
+    draw();
+    return;
+  }
+  /* ━━━ Shift+ホイール: 横スクロール ━━━ */
+  if(e.shiftKey){
+    offsetX -= e.deltaY;  // シフト押下時は deltaY を横方向に
+    draw();
+    return;
+  }
+  /* ━━━ Ctrl(Cmd)+ホイール: 縦スクロール ━━━ */
+  if(e.ctrlKey || e.metaKey){
+    offsetY -= e.deltaY;
     draw();
     return;
   }
@@ -1115,10 +1361,21 @@ canvas.addEventListener('wheel',function(e){
 },{passive:false});
 /* ━━━ 右クリックでブラウザのコンテキストメニューを抑制 ━━━ */
 canvas.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+/* ━━━ 中クリックのオートスクロール(丸カーソル)を抑制 ━━━ */
+canvas.addEventListener('auxclick', function(e){ if(e.button===1) e.preventDefault(); });
 
 canvas.addEventListener('mousedown',function(e){
   var cp=getCanvasPos(e);
   var mx=cp.x,my=cp.y;
+  /* ━━━ 中クリック(ホイールボタン): どのモードでも一時パン ━━━ */
+  if(e.button===1){
+    e.preventDefault();
+    isPanning=true;
+    panStartX=mx; panStartY=my;
+    panOriginX=offsetX; panOriginY=offsetY;
+    wrap.style.cursor='grabbing';
+    return;
+  }
   /* ━━━ Shift+右クリック: 頂点モードで前の点と軸ロックして頂点追加 ━━━ */
   if(e.button===2 && shiftHeld && mode==='vertex' && vertices.length>0){
     var wRC=toWorld(mx,my);
@@ -1159,11 +1416,17 @@ canvas.addEventListener('mousedown',function(e){
       draw(); // 選択状態を表示
       return;
     }
-    /* 多角形の辺中点をクリックしたら頂点追加 */
+    /* 辺をクリックしたら頂点追加(矩形部屋も対応) */
     var em=findPolygonEdgeMidpointAt(w.x,w.y);
     if(em){
+      /* 矩形部屋なら先に多角形化 */
+      if(em.isRect){
+        convertRectToPolygon(em.roomIndex);
+      }
       var r=rooms[em.roomIndex];
-      r.vertices.splice(em.edgeIndex+1, 0, {x:em.mx, y:em.my});
+      /* スナップした座標で挿入 */
+      var insX=snapWorld(em.mx), insY=snapWorld(em.my);
+      r.vertices.splice(em.edgeIndex+1, 0, {x:insX, y:insY});
       /* 開口の edgeIndex を補正(挿入位置より後のものを +1) */
       (r.openings||[]).forEach(function(o){
         if(o.edgeIndex!==undefined && o.edgeIndex>em.edgeIndex){
@@ -1173,9 +1436,10 @@ canvas.addEventListener('mousedown',function(e){
       draggingVertex={roomIndex:em.roomIndex, type:'poly', vertexIndex:em.edgeIndex+1};
       wrap.style.cursor='grabbing';
       draw();rebuild3D();renderRoomList();
+      document.getElementById('status').textContent='頂点を追加しました。ドラッグで位置調整できます';
       return;
     }
-    document.getElementById('status').textContent='編集モード: 頂点や角をドラッグしてください(緑の丸が頂点、辺の中央クリックで頂点追加)';
+    document.getElementById('status').textContent='編集モード: 頂点や角をドラッグ / 辺をクリックで頂点追加 / 頂点選択中にDeleteで削除';
     return;
   }
   if(mode==='furniture'){
@@ -1193,22 +1457,62 @@ canvas.addEventListener('mousedown',function(e){
     }
     return;
   }
-  if(mode==='door'||mode==='window'){
+  /* ━━━ 壁モード: クリックで点を打って独立壁を作る ━━━ */
+  if(mode==='wall'){
+    var nxW=snapWorld(w.x), nyW=snapWorld(w.y);
+    if(wallStartPt===null){
+      wallStartPt={x:nxW, y:nyW};
+      document.getElementById('status').textContent='壁: 終点をクリック / ESCで中断';
+      draw();
+      return;
+    }
+    /* 同じ点をクリックしたらキャンセル */
+    if(Math.abs(nxW-wallStartPt.x)<5 && Math.abs(nyW-wallStartPt.y)<5){
+      wallStartPt=null;
+      document.getElementById('status').textContent='壁: クリックで始点';
+      draw();
+      return;
+    }
+    /* Shift で軸ロック */
+    var endX=nxW, endY=nyW;
+    if(shiftHeld){
+      var dxL=Math.abs(nxW-wallStartPt.x), dyL=Math.abs(nyW-wallStartPt.y);
+      if(dxL>=dyL){ endY=wallStartPt.y; } else { endX=wallStartPt.x; }
+    }
+    walls.push({id:nextWallId++, x1:wallStartPt.x, y1:wallStartPt.y, x2:endX, y2:endY});
+    /* 連続入力: 終点が次の始点に */
+    wallStartPt={x:endX, y:endY};
+    document.getElementById('status').textContent='壁 '+walls.length+'本 作成 / 次の終点をクリック / ESCで中断';
+    draw();rebuild3D();renderRoomList();
+    return;
+  }
+  if(mode==='door'||mode==='window'||mode==='passage'){
     var hit=findOpeningAt(w.x,w.y);
-    if(hit){draggingOpening=hit;wrap.style.cursor='grabbing';return;}
+    if(hit){
+      draggingOpening=hit;
+      wrap.style.cursor = (hit.handle==='left'||hit.handle==='right') ? 'ew-resize' : 'grabbing';
+      return;
+    }
     var room=getRoomAt(w.x,w.y);
     if(room){
       if(!room.openings)room.openings=[];
+      /* type別のデフォルト値: 通路は壁全体の高さ・広めの幅 */
+      var defaultW = mode==='door' ? 0.9 : mode==='window' ? 1.2 : 1.5;
+      var defaultH = mode==='door' ? 2.0 : mode==='window' ? 1.0 : 2.4; // 通路は壁高
       if(room.vertices&&room.vertices.length>=3){
         var ev=getClosestPolygonEdge(room,w.x,w.y);
-        room.openings.push({type:mode,edgeIndex:ev.edgeIndex,offsetAlongWall:Math.max(0.05,Math.min(0.95,ev.along)),width:mode==='door'?0.9:1.2,height:mode==='door'?2.0:1.0,doorType:'swing_left'});
+        var opening = {type:mode, edgeIndex:ev.edgeIndex, offsetAlongWall:Math.max(0.05,Math.min(0.95,ev.along)), width:defaultW, height:defaultH};
+        if(mode==='door') opening.doorType=currentDoorType;
+        room.openings.push(opening);
       } else {
         var wall=getClosestWall(room,w.x,w.y);
         var isNS=wall==='North'||wall==='South';
         var wallLength=isNS?room.ww:room.wh;
         var along=isNS?(w.x-room.wx)/wallLength:(w.y-room.wy)/wallLength;
         along=Math.max(0.05,Math.min(0.95,along));
-        room.openings.push({type:mode,wall:wall,offsetAlongWall:along,width:mode==='door'?0.9:1.2,height:mode==='door'?2.0:1.0,doorType:'swing_left'});
+        var opening = {type:mode, wall:wall, offsetAlongWall:along, width:defaultW, height:defaultH};
+        if(mode==='door') opening.doorType=currentDoorType;
+        room.openings.push(opening);
       }
       draw();rebuild3D();renderRoomList();
     }
@@ -1265,6 +1569,17 @@ canvas.addEventListener('mousemove',function(e){
   if(draggingFurniture!==null){furnitures[draggingFurniture].cx=snapWorld(w.x-dragFurnitureOffX);furnitures[draggingFurniture].cy=snapWorld(w.y-dragFurnitureOffY);draw();rebuild3D();return;}
   if(draggingOpening!==null){
     var r=rooms[draggingOpening.roomIndex],o=r.openings[draggingOpening.openingIndex];
+    var handle=draggingOpening.handle||'center';
+    /* ━━━ 端ハンドルをドラッグ: 幅を変更(中心位置は固定) ━━━ */
+    if(handle==='left'||handle==='right'){
+      var pos=getOpeningCanvasPos(r,o);
+      var dxC=w.x-pos.x, dyC=w.y-pos.y;
+      var distCanvas=Math.sqrt(dxC*dxC+dyC*dyC);
+      var newW=(distCanvas*2)/BASE_SCALE; // メートル単位
+      o.width=Math.max(0.3, Math.min(5.0, newW));
+      draw();renderRoomList();return;
+    }
+    /* ━━━ 中心ハンドル(=従来通り位置移動) ━━━ */
     if(o.edgeIndex!==undefined && r.vertices){
       var verts=r.vertices,i=o.edgeIndex,j=(i+1)%verts.length;
       var ax=verts[i].x,ay=verts[i].y,bx=verts[j].x,by=verts[j].y;
@@ -1280,6 +1595,43 @@ canvas.addEventListener('mousemove',function(e){
   }
   if(mode==='rect'&&drawing){curX=snapWorld(w.x);curY=snapWorld(w.y);draw();}
   if(mode==='vertex'){cursorX=snapWorld(w.x);cursorY=snapWorld(w.y);draw();}
+  if(mode==='wall'){cursorX=snapWorld(w.x);cursorY=snapWorld(w.y);if(wallStartPt)draw();}
+  /* ━━━ ドア/窓/通路モード: 壁ホバーで設置プレビューを計算 ━━━ */
+  if(mode==='door'||mode==='window'||mode==='passage'){
+    var prevPreview=openingPreview;
+    openingPreview=computeOpeningPreview(w.x,w.y);
+    /* プレビュー内容が変わった時だけ再描画(負荷軽減) */
+    if(JSON.stringify(prevPreview)!==JSON.stringify(openingPreview)) draw();
+  } else if(openingPreview){
+    openingPreview=null; draw();
+  }
+});
+
+/* ドア/窓/通路の設置プレビュー位置を計算 */
+function computeOpeningPreview(wx,wy){
+  var room=getRoomAt(wx,wy);
+  if(!room) return null;
+  var defW = mode==='door' ? (currentDoorType&&currentDoorType.indexOf('slide')===0?0.9:0.9) : mode==='window' ? 1.2 : 1.5;
+  var defH = mode==='door' ? 2.0 : mode==='window' ? 1.0 : 2.4;
+  if(room.vertices&&room.vertices.length>=3){
+    var ev=getClosestPolygonEdge(room,wx,wy);
+    if(!ev) return null;
+    return {kind:'poly', roomIndex:rooms.indexOf(room), edgeIndex:ev.edgeIndex,
+            along:Math.max(0.05,Math.min(0.95,ev.along)), width:defW, height:defH,
+            type:mode, doorType:(mode==='door'?currentDoorType:null)};
+  } else {
+    var wall=getClosestWall(room,wx,wy);
+    var isNS=wall==='North'||wall==='South';
+    var wallLength=isNS?room.ww:room.wh;
+    var along=isNS?(wx-room.wx)/wallLength:(wy-room.wy)/wallLength;
+    along=Math.max(0.05,Math.min(0.95,along));
+    return {kind:'rect', roomIndex:rooms.indexOf(room), wall:wall,
+            along:along, width:defW, height:defH,
+            type:mode, doorType:(mode==='door'?currentDoorType:null)};
+  }
+}
+canvas.addEventListener('mouseleave',function(){
+  if(openingPreview){ openingPreview=null; draw(); }
 });
 canvas.addEventListener('mouseup',function(e){
   if(isPanning){isPanning=false;wrap.style.cursor=mode==='pan'?'grab':'crosshair';return;}
@@ -1377,15 +1729,18 @@ function draw(){
           ctx.strokeStyle='#fff'; ctx.lineWidth=2/scale; ctx.stroke();
         }
       });
-      /* 編集モード: 辺の中点を半透明丸で表示(クリックで頂点追加可能の合図) */
+      /* 編集モード: 辺の中点を「+」マーカーで表示(クリックで頂点追加の合図) */
       if(mode==='edit'){
         for(var ei=0;ei<r.vertices.length;ei++){
           var ej=(ei+1)%r.vertices.length;
           var mx=(r.vertices[ei].x+r.vertices[ej].x)/2;
           var my=(r.vertices[ei].y+r.vertices[ej].y)/2;
-          ctx.beginPath();ctx.arc(mx,my,4/scale,0,Math.PI*2);
-          ctx.fillStyle='rgba(29,158,117,0.4)';ctx.fill();
-          ctx.strokeStyle='#1D9E75';ctx.lineWidth=1/scale;ctx.stroke();
+          ctx.beginPath();ctx.arc(mx,my,5/scale,0,Math.PI*2);
+          ctx.fillStyle='rgba(24,95,165,0.35)';ctx.fill();
+          ctx.strokeStyle='#185FA5';ctx.lineWidth=1/scale;ctx.stroke();
+          ctx.strokeStyle='#185FA5';ctx.lineWidth=1.2/scale;
+          ctx.beginPath();ctx.moveTo(mx-2.5/scale,my);ctx.lineTo(mx+2.5/scale,my);
+          ctx.moveTo(mx,my-2.5/scale);ctx.lineTo(mx,my+2.5/scale);ctx.stroke();
         }
       }
     }else{
@@ -1405,6 +1760,17 @@ function draw(){
           ctx.fillStyle=isSel?'#F59E0B':r.color;ctx.fill();
           ctx.strokeStyle='#fff';ctx.lineWidth=2/scale;ctx.stroke();
         });
+        /* 各辺の中点に「+」マーカー(クリックで頂点追加できる合図) */
+        for(var ci2=0;ci2<corners.length;ci2++){
+          var cn=corners[ci2], cn2=corners[(ci2+1)%corners.length];
+          var emx=(cn.x+cn2.x)/2, emy=(cn.y+cn2.y)/2;
+          ctx.beginPath();ctx.arc(emx,emy,5/scale,0,Math.PI*2);
+          ctx.fillStyle='rgba(24,95,165,0.35)';ctx.fill();
+          ctx.strokeStyle='#185FA5';ctx.lineWidth=1/scale;ctx.stroke();
+          ctx.strokeStyle='#185FA5';ctx.lineWidth=1.2/scale;
+          ctx.beginPath();ctx.moveTo(emx-2.5/scale,emy);ctx.lineTo(emx+2.5/scale,emy);
+          ctx.moveTo(emx,emy-2.5/scale);ctx.lineTo(emx,emy+2.5/scale);ctx.stroke();
+        }
       }
     }
     ctx.fillStyle=r.color;ctx.font='500 '+(12/scale)+'px sans-serif';ctx.textAlign='center';
@@ -1414,24 +1780,59 @@ function draw(){
     (r.openings||[]).forEach(function(o){
       var pos=getOpeningCanvasPos(r,o);
       var ow=o.width*BASE_SCALE,t=8/scale;
-      /* 色: ドアタイプで区別 / 窓は青 */
+      /* 色: ドアタイプで区別 / 窓は青 / 通路は紫 */
       var dt2 = o.doorType||'swing_left';
       var isSlide2 = (dt2==='slide'||dt2==='slide_left'||dt2==='slide_right');
+      var isRightHinge2 = (dt2==='swing_right'||dt2==='swing_right_out');
+      var isOut2 = (dt2==='swing_left_out'||dt2==='swing_right_out');
       var fillColor;
       if(o.type==='door'){
-        fillColor = isSlide2 ? '#4FA478' : dt2==='swing_right' ? '#A0522D' : '#1D9E75';
+        fillColor = isSlide2 ? '#4FA478' : isRightHinge2 ? '#A0522D' : '#1D9E75';
+      } else if(o.type==='passage'){
+        fillColor='#9333EA'; // 紫
       } else { fillColor='#185FA5'; }
       ctx.fillStyle=fillColor;
       /* 開口本体を描く */
       if(o.edgeIndex!==undefined && r.vertices){
         var verts=r.vertices,i=o.edgeIndex,j=(i+1)%verts.length;
         var ang=Math.atan2(verts[j].y-verts[i].y,verts[j].x-verts[i].x);
+        /* 部屋の重心を計算(内側方向を決めるため) */
+        var rSumX=0, rSumY=0;
+        verts.forEach(function(vc){rSumX+=vc.x; rSumY+=vc.y;});
+        var rCX=rSumX/verts.length, rCY=rSumY/verts.length;
+        /* 壁のローカル座標系で重心の位置を計算 */
+        var dxC=rCX-pos.x, dyC=rCY-pos.y;
+        var localCY = -Math.sin(ang)*dxC + Math.cos(ang)*dyC;
+        var innerSign = localCY > 0 ? 1 : -1;  // canvas座標系: 内側は Y の符号
+
         ctx.save();ctx.translate(pos.x,pos.y);ctx.rotate(ang);
         ctx.fillRect(-ow/2,-t/2,ow,t);
         if(o.type==='door' && !isSlide2){
-          var hingeSign = (dt2==='swing_right') ? 1 : -1;
-          ctx.fillStyle='#FF6B00';
-          ctx.beginPath();ctx.arc(hingeSign*ow/2, 0, 4/scale, 0, Math.PI*2);ctx.fill();
+          var hingeSign = isRightHinge2 ? 1 : -1;
+          /* 開くアーク:設計図と同じ表現でどっちに開くか一目で分かる */
+          var arcSide = isOut2 ? -innerSign : innerSign;
+          var hingeX = hingeSign * ow / 2;
+          var startAngle = (hingeSign === -1) ? 0 : Math.PI;
+          var endAngle = startAngle + (arcSide > 0 ? Math.PI/2 : -Math.PI/2);
+          ctx.strokeStyle = fillColor;
+          ctx.lineWidth = 1.5/scale;
+          ctx.setLineDash([3/scale, 2/scale]);
+          ctx.beginPath();
+          ctx.arc(hingeX, 0, ow, startAngle, endAngle, arcSide < 0);
+          ctx.stroke();
+          /* ドア板の開いた状態(実線) */
+          ctx.setLineDash([]);
+          var doorEndX = hingeX;
+          var doorEndY = arcSide * ow;
+          ctx.strokeStyle = fillColor;
+          ctx.lineWidth = 2/scale;
+          ctx.beginPath();
+          ctx.moveTo(hingeX, 0);
+          ctx.lineTo(doorEndX, doorEndY);
+          ctx.stroke();
+          /* ヒンジマーカー: 内=橙、外=水色 */
+          ctx.fillStyle = isOut2 ? '#38BDF8' : '#FF6B00';
+          ctx.beginPath();ctx.arc(hingeX, 0, 4/scale, 0, Math.PI*2);ctx.fill();
         }
         if(o.type==='door' && isSlide2){
           /* 引き戸方向の矢印 */
@@ -1446,11 +1847,43 @@ function draw(){
         ctx.restore();
       } else {
         var isNS=o.wall==='North'||o.wall==='South';
+        /* 矩形の重心 */
+        var rCX2 = r.wx + r.ww/2, rCY2 = r.wy + r.wh/2;
         if(isNS)ctx.fillRect(pos.x-ow/2,pos.y-t/2,ow,t);
         else ctx.fillRect(pos.x-t/2,pos.y-ow/2,t,ow);
         if(o.type==='door' && !isSlide2){
-          var hingeSign2 = (dt2==='swing_right') ? 1 : -1;
-          ctx.fillStyle='#FF6B00';
+          var hingeSign2 = isRightHinge2 ? 1 : -1;
+          /* 内側方向を判定: 重心とドアの相対位置 */
+          var localCY2;
+          if(isNS) localCY2 = rCY2 - pos.y;
+          else     localCY2 = -(rCX2 - pos.x); // 東西壁は 90度回転した座標系
+          var innerSign2 = localCY2 > 0 ? 1 : -1;
+          var arcSide2 = isOut2 ? -innerSign2 : innerSign2;
+          /* アーク描画 */
+          ctx.strokeStyle = fillColor;
+          ctx.lineWidth = 1.5/scale;
+          ctx.setLineDash([3/scale, 2/scale]);
+          if(isNS){
+            var hX = pos.x + hingeSign2*ow/2;
+            var startA = (hingeSign2 === -1) ? 0 : Math.PI;
+            var endA = startA + (arcSide2>0 ? Math.PI/2 : -Math.PI/2);
+            ctx.beginPath();
+            ctx.arc(hX, pos.y, ow, startA, endA, arcSide2 < 0);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.beginPath();ctx.moveTo(hX,pos.y);ctx.lineTo(hX, pos.y + arcSide2*ow);ctx.stroke();
+          } else {
+            var hY = pos.y + hingeSign2*ow/2;
+            var startAv = (hingeSign2 === -1) ? -Math.PI/2 : Math.PI/2;
+            var endAv = startAv + (arcSide2>0 ? -Math.PI/2 : Math.PI/2);
+            ctx.beginPath();
+            ctx.arc(pos.x, hY, ow, startAv, endAv, arcSide2 > 0);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.beginPath();ctx.moveTo(pos.x,hY);ctx.lineTo(pos.x - arcSide2*ow, hY);ctx.stroke();
+          }
+          /* ヒンジマーカー */
+          ctx.fillStyle = isOut2 ? '#38BDF8' : '#FF6B00';
           if(isNS){
             ctx.beginPath();ctx.arc(pos.x+hingeSign2*ow/2, pos.y, 4/scale, 0, Math.PI*2);ctx.fill();
           } else {
@@ -1471,7 +1904,16 @@ function draw(){
           ctx.textBaseline='alphabetic';
         }
       }
-      ctx.beginPath();ctx.arc(pos.x,pos.y,5/scale,0,Math.PI*2);ctx.fillStyle=o.type==='door'?'#0F6E56':'#185FA5';ctx.fill();
+      ctx.beginPath();ctx.arc(pos.x,pos.y,5/scale,0,Math.PI*2);
+      ctx.fillStyle = o.type==='door'?'#0F6E56' : o.type==='passage'?'#6B21A8' : '#185FA5';
+      ctx.fill();
+      /* 開口の両端に幅変更ハンドル(白い丸) */
+      var ep = getOpeningEndpoints(r,o);
+      if(ep){
+        ctx.fillStyle='#fff';ctx.strokeStyle=fillColor;ctx.lineWidth=1.5/scale;
+        ctx.beginPath();ctx.arc(ep.left.x, ep.left.y, 4/scale, 0, Math.PI*2);ctx.fill();ctx.stroke();
+        ctx.beginPath();ctx.arc(ep.right.x, ep.right.y, 4/scale, 0, Math.PI*2);ctx.fill();ctx.stroke();
+      }
     });
   });
   furnitures.forEach(function(f){
@@ -1536,6 +1978,111 @@ function draw(){
       }
     }
   }
+  /* ━━━ 独立壁の描画 ━━━ */
+  walls.forEach(function(wl){
+    ctx.strokeStyle='#4B5563';
+    ctx.lineWidth=6/scale;
+    ctx.lineCap='round';
+    ctx.beginPath();ctx.moveTo(wl.x1,wl.y1);ctx.lineTo(wl.x2,wl.y2);ctx.stroke();
+    /* 両端の小マーカー */
+    ctx.fillStyle='#1F2937';
+    ctx.beginPath();ctx.arc(wl.x1,wl.y1,3/scale,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.arc(wl.x2,wl.y2,3/scale,0,Math.PI*2);ctx.fill();
+  });
+  /* 壁モード中の入力プレビュー */
+  if(mode==='wall' && wallStartPt){
+    /* Shift で軸ロック */
+    var pX=cursorX, pY=cursorY;
+    if(shiftHeld){
+      var dxL2=Math.abs(cursorX-wallStartPt.x), dyL2=Math.abs(cursorY-wallStartPt.y);
+      if(dxL2>=dyL2) pY=wallStartPt.y; else pX=wallStartPt.x;
+    }
+    ctx.strokeStyle='#9CA3AF';
+    ctx.lineWidth=4/scale;
+    ctx.setLineDash([8/scale,4/scale]);
+    ctx.beginPath();ctx.moveTo(wallStartPt.x,wallStartPt.y);ctx.lineTo(pX,pY);ctx.stroke();
+    ctx.setLineDash([]);
+    /* 始点マーカー(赤)、終点マーカー(青) */
+    ctx.fillStyle='#DC2626';
+    ctx.beginPath();ctx.arc(wallStartPt.x,wallStartPt.y,5/scale,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#2563EB';
+    ctx.beginPath();ctx.arc(pX,pY,4/scale,0,Math.PI*2);ctx.fill();
+  }
+  /* ━━━ ドア/窓/通路 設置プレビュー(半透明) ━━━ */
+  if(openingPreview) drawOpeningPreview(openingPreview);
+  ctx.restore();
+}
+
+/* ドア/窓/通路の設置プレビューを半透明で描く */
+function drawOpeningPreview(pv){
+  var r=rooms[pv.roomIndex];
+  if(!r) return;
+  var ow=pv.width*BASE_SCALE, t=8/scale;
+  /* プレビュー用の一時 opening オブジェクトを作って中心座標を求める */
+  var tmpO = (pv.kind==='poly')
+    ? {edgeIndex:pv.edgeIndex, offsetAlongWall:pv.along, width:pv.width}
+    : {wall:pv.wall, offsetAlongWall:pv.along, width:pv.width};
+  var pos=getOpeningCanvasPos(r,tmpO);
+  if(!pos) return;
+  var dt=pv.doorType||'swing_left';
+  var isSlide=(dt.indexOf('slide')===0);
+  var isRightHinge=(dt==='swing_right'||dt==='swing_right_out');
+  var isOut=(dt==='swing_left_out'||dt==='swing_right_out');
+  var baseColor = pv.type==='door' ? (isSlide?'#4FA478':isRightHinge?'#A0522D':'#1D9E75')
+                : pv.type==='passage' ? '#9333EA' : '#185FA5';
+  ctx.save();
+  ctx.globalAlpha=0.5;
+  /* 角度を求める */
+  var ang;
+  if(pv.kind==='poly'){
+    var verts=r.vertices,i=pv.edgeIndex,j=(i+1)%verts.length;
+    ang=Math.atan2(verts[j].y-verts[i].y, verts[j].x-verts[i].x);
+  } else {
+    var isNS=pv.wall==='North'||pv.wall==='South';
+    ang=isNS?0:Math.PI/2;
+  }
+  ctx.translate(pos.x,pos.y);ctx.rotate(ang);
+  /* 開口本体 */
+  ctx.fillStyle=baseColor;
+  ctx.fillRect(-ow/2,-t/2,ow,t);
+  /* スイングドアなら開くアークを点線で */
+  if(pv.type==='door' && !isSlide){
+    /* 部屋の重心方向(内側)を判定 */
+    var cxSum=0,cySum=0,vc;
+    if(pv.kind==='poly'){ r.vertices.forEach(function(v){cxSum+=v.x;cySum+=v.y;}); vc=r.vertices.length; }
+    else { cxSum=(r.wx+r.ww/2)*4; cySum=(r.wy+r.wh/2)*4; vc=4; }
+    var rCX=cxSum/vc, rCY=cySum/vc;
+    var dxC=rCX-pos.x, dyC=rCY-pos.y;
+    var localCY=-Math.sin(ang)*dxC+Math.cos(ang)*dyC;
+    var innerSign=localCY>0?1:-1;
+    var arcSide=isOut?-innerSign:innerSign;
+    var hingeSign=isRightHinge?1:-1;
+    var hingeX=hingeSign*ow/2;
+    var startA=(hingeSign===-1)?0:Math.PI;
+    var endA=startA+(arcSide>0?Math.PI/2:-Math.PI/2);
+    ctx.strokeStyle=baseColor;ctx.lineWidth=1.5/scale;ctx.setLineDash([4/scale,3/scale]);
+    ctx.beginPath();ctx.arc(hingeX,0,ow,startA,endA,arcSide<0);ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.beginPath();ctx.moveTo(hingeX,0);ctx.lineTo(hingeX,arcSide*ow);ctx.stroke();
+    /* ヒンジ点 */
+    ctx.fillStyle=isOut?'#38BDF8':'#FF6B00';
+    ctx.beginPath();ctx.arc(hingeX,0,4/scale,0,Math.PI*2);ctx.fill();
+  }
+  if(pv.type==='door' && isSlide){
+    var slideSign=(dt==='slide_right')?1:-1;
+    ctx.fillStyle='#10B981';
+    ctx.beginPath();ctx.arc(slideSign*ow/2,0,4/scale,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#fff';ctx.font='bold '+(8/scale)+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(slideSign>0?'→':'←',0,0);ctx.textBaseline='alphabetic';
+  }
+  ctx.restore();
+  /* プレビューの外枠(点線)で「これから置くもの」感を出す */
+  ctx.save();
+  ctx.globalAlpha=0.9;
+  ctx.translate(pos.x,pos.y);ctx.rotate(ang);
+  ctx.strokeStyle=baseColor;ctx.lineWidth=1.5/scale;ctx.setLineDash([5/scale,3/scale]);
+  ctx.strokeRect(-ow/2,-t/2,ow,t);
+  ctx.setLineDash([]);
   ctx.restore();
 }
 function toUnityCoords(wx,wy,ww,wh){return{x:wx/BASE_SCALE,y:-(wy+wh)/BASE_SCALE,width:ww/BASE_SCALE,depth:wh/BASE_SCALE};}
@@ -1554,13 +2101,19 @@ async function sendData(silent){
           var along=o.offsetAlongWall!==undefined?o.offsetAlongWall:0.5;
           return{type:o.type,wall:o.wall,offsetAlongWall:along*(wallLength/BASE_SCALE),width:o.width,height:o.height,doorType:o.doorType};
         })};
+    }),walls:walls.map(function(wl){
+      return{
+        x1: wl.x1/BASE_SCALE, z1: -wl.y1/BASE_SCALE,
+        x2: wl.x2/BASE_SCALE, z2: -wl.y2/BASE_SCALE,
+        thickness: 0.05, height: 2.4
+      };
     })}]},
     furniture:furnitures.map(function(f){return{id:'furniture_'+f.id,type:f.type,name:f.name,x:f.cx/BASE_SCALE,y:-f.cy/BASE_SCALE,width:f.w,depth:f.d,height:f.h,rotation:f.rotation};})
   };
   try{
     var res=await fetch(SERVER,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
     if(res.ok){
-      var msg='✓ 送信完了（部屋:'+rooms.length+' 家具:'+furnitures.length+'）';
+      var msg='✓ 送信完了（部屋:'+rooms.length+' 家具:'+furnitures.length+' 壁:'+walls.length+'）';
       document.getElementById('status').textContent=msg;
       if(silent || VR_VIEW_MODE){
         postToParent({type:'vr-editor-sent', message:msg});
@@ -1577,15 +2130,225 @@ function removeFurniture(i){furnitures.splice(i,1);renderRoomList();draw();rebui
 function removeOpening(roomIdx, openingIdx){rooms[roomIdx].openings.splice(openingIdx,1);renderRoomList();draw();rebuild3D();}
 
 /* ━━━ ドアタイプ変更 ━━━ */
+/* ━━━ ツールバーで新規ドアの種類を選択 ━━━ */
+function selectDoorType(dt, btn){
+  currentDoorType = dt;
+  document.querySelectorAll('.doortype-btn').forEach(function(b){ b.classList.remove('active'); });
+  if(btn) btn.classList.add('active');
+  var label = dt==='swing_left'?'左開き(内)'
+            : dt==='swing_left_out'?'左開き(外)'
+            : dt==='swing_right'?'右開き(内)'
+            : dt==='swing_right_out'?'右開き(外)'
+            : dt==='slide_left'?'引き戸(左)'
+            : dt==='slide_right'?'引き戸(右)':'ドア';
+  document.getElementById('status').textContent = '新規ドア種類: ' + label + ' — 壁をクリックして設置';
+}
+
 function setDoorType(roomIdx, openingIdx, type){
   if(!rooms[roomIdx] || !rooms[roomIdx].openings[openingIdx]) return;
   rooms[roomIdx].openings[openingIdx].doorType = type;
   draw(); rebuild3D(); renderRoomList();
-  var label = type==='swing_left'?'左開き'
-            : type==='swing_right'?'右開き'
+  var label = type==='swing_left'?'左開き(内)'
+            : type==='swing_left_out'?'左開き(外)'
+            : type==='swing_right'?'右開き(内)'
+            : type==='swing_right_out'?'右開き(外)'
             : type==='slide_left'?'引き戸(左)'
             : type==='slide_right'?'引き戸(右)':'引き戸';
   document.getElementById('status').textContent = 'ドアタイプを変更: ' + label;
+}
+
+/* ━━━ 開口幅変更(roomList の入力ボックスから呼ばれる) ━━━ */
+function setOpeningWidth(roomIdx, openingIdx, val){
+  if(!rooms[roomIdx] || !rooms[roomIdx].openings[openingIdx]) return;
+  var w = parseFloat(val);
+  if(isNaN(w)) return;
+  w = Math.max(0.3, Math.min(5.0, w));
+  rooms[roomIdx].openings[openingIdx].width = w;
+  draw(); rebuild3D(); renderRoomList();
+  document.getElementById('status').textContent = '開口幅を変更: ' + w.toFixed(2) + 'm';
+}
+
+/* ━━━ 独立壁削除 ━━━ */
+function removeWall(idx){
+  if(!walls[idx]) return;
+  walls.splice(idx,1);
+  draw(); rebuild3D(); renderRoomList();
+}
+
+/* ━━━ 部屋の色を変更 ━━━ */
+function setRoomColor(roomIdx, color){
+  if(!rooms[roomIdx]) return;
+  rooms[roomIdx].color = color;
+  draw(); rebuild3D(); renderRoomList();
+  document.getElementById('status').textContent = '「'+rooms[roomIdx].name+'」の色を変更しました';
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   全体サイズ調整(スライダーで部屋・壁・家具を一括で拡縮)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+var scaleModeOrig = null;
+var scaleModeAnchor = {x:0, y:0};
+
+/* スケールモード進入時:現在の座標をディープコピーで保持 */
+function enterScaleMode(){
+  /* 全要素のバウンディングボックス中心をスケール基準点に */
+  var minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+  rooms.forEach(function(r){
+    if(r.vertices){
+      r.vertices.forEach(function(v){minX=Math.min(minX,v.x);minY=Math.min(minY,v.y);maxX=Math.max(maxX,v.x);maxY=Math.max(maxY,v.y);});
+    } else {
+      minX=Math.min(minX,r.wx);minY=Math.min(minY,r.wy);maxX=Math.max(maxX,r.wx+r.ww);maxY=Math.max(maxY,r.wy+r.wh);
+    }
+  });
+  walls.forEach(function(w){minX=Math.min(minX,w.x1,w.x2);minY=Math.min(minY,w.y1,w.y2);maxX=Math.max(maxX,w.x1,w.x2);maxY=Math.max(maxY,w.y1,w.y2);});
+  furnitures.forEach(function(f){
+    var hw=(f.pw||50)/2, hh=(f.ph||50)/2;
+    minX=Math.min(minX,f.cx-hw);minY=Math.min(minY,f.cy-hh);maxX=Math.max(maxX,f.cx+hw);maxY=Math.max(maxY,f.cy+hh);
+  });
+  if(minX===Infinity){ minX=0;minY=0;maxX=0;maxY=0; }
+  scaleModeAnchor.x = (minX+maxX)/2;
+  scaleModeAnchor.y = (minY+maxY)/2;
+  /* ディープコピーで元データを保持(スライダー操作時に毎回ここから再計算) */
+  scaleModeOrig = {
+    rooms: JSON.parse(JSON.stringify(rooms)),
+    walls: JSON.parse(JSON.stringify(walls)),
+    furnitures: JSON.parse(JSON.stringify(furnitures))
+  };
+  /* スライダーを 100% にリセット */
+  var sl=document.getElementById('globalScaleSlider'); if(sl) sl.value=100;
+  var inp=document.getElementById('globalScaleInput'); if(inp) inp.value=100;
+}
+
+/* スケールモード退出時:現在の状態を確定(バックアップ破棄) */
+function commitScaleMode(){
+  scaleModeOrig = null;
+}
+
+/* スライダー操作:元データを基準に倍率 s で全要素を再計算 */
+function applyGlobalScale(s){
+  if(!scaleModeOrig) return;
+  var ax=scaleModeAnchor.x, ay=scaleModeAnchor.y;
+  /* 部屋 */
+  rooms = JSON.parse(JSON.stringify(scaleModeOrig.rooms));
+  rooms.forEach(function(r){
+    if(r.vertices){
+      r.vertices.forEach(function(v){
+        v.x = ax + (v.x - ax) * s;
+        v.y = ay + (v.y - ay) * s;
+      });
+      /* wx/wy/ww/wh を再計算 */
+      var minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+      r.vertices.forEach(function(v){minX=Math.min(minX,v.x);minY=Math.min(minY,v.y);maxX=Math.max(maxX,v.x);maxY=Math.max(maxY,v.y);});
+      r.wx=minX; r.wy=minY; r.ww=maxX-minX; r.wh=maxY-minY;
+    } else {
+      r.wx = ax + (r.wx - ax) * s;
+      r.wy = ay + (r.wy - ay) * s;
+      r.ww *= s;
+      r.wh *= s;
+    }
+    /* 開口の幅もスケール(物理サイズ) */
+    if(r.openings){
+      r.openings.forEach(function(o){ if(o.width) o.width *= s; if(o.height) o.height *= s; });
+    }
+  });
+  /* 壁 */
+  walls = JSON.parse(JSON.stringify(scaleModeOrig.walls));
+  walls.forEach(function(w){
+    w.x1 = ax + (w.x1 - ax) * s;
+    w.y1 = ay + (w.y1 - ay) * s;
+    w.x2 = ax + (w.x2 - ax) * s;
+    w.y2 = ay + (w.y2 - ay) * s;
+  });
+  /* 家具 */
+  furnitures = JSON.parse(JSON.stringify(scaleModeOrig.furnitures));
+  furnitures.forEach(function(f){
+    f.cx = ax + (f.cx - ax) * s;
+    f.cy = ay + (f.cy - ay) * s;
+    if(f.pw) f.pw *= s; if(f.ph) f.ph *= s;
+    if(f.w) f.w *= s; if(f.d) f.d *= s; if(f.h) f.h *= s;
+  });
+  draw(); rebuild3D(); renderRoomList();
+}
+
+/* スライダーリセット(100% に戻す) */
+function resetGlobalScale(){
+  if(!scaleModeOrig) return;
+  applyGlobalScale(1.0);
+  var sl=document.getElementById('globalScaleSlider'); if(sl) sl.value=100;
+  var inp=document.getElementById('globalScaleInput'); if(inp) inp.value=100;
+}
+
+/* スライダーと数値入力の双方向同期 */
+window.addEventListener('load', function(){
+  var sl = document.getElementById('globalScaleSlider');
+  var inp = document.getElementById('globalScaleInput');
+  if(!sl || !inp) return;
+  /* スライダー → 数値入力 + 反映 */
+  sl.addEventListener('input', function(){
+    var pct = parseInt(this.value);
+    inp.value = pct;
+    applyGlobalScale(pct / 100);
+  });
+  /* 数値入力 → スライダー + 反映 */
+  inp.addEventListener('input', function(){
+    var pct = parseInt(this.value);
+    if(isNaN(pct)) return;
+    pct = Math.max(10, Math.min(500, pct));
+    sl.value = pct;
+    applyGlobalScale(pct / 100);
+  });
+  /* 数値入力フォーカス離脱時に範囲外を補正 */
+  inp.addEventListener('change', function(){
+    var pct = parseInt(this.value);
+    if(isNaN(pct)) pct = 100;
+    pct = Math.max(10, Math.min(500, pct));
+    this.value = pct;
+    sl.value = pct;
+    applyGlobalScale(pct / 100);
+  });
+});
+
+/* ━━━ 色選択パレットをポップアップ表示 ━━━ */
+function toggleColorPalette(roomIdx, ev){
+  /* 既存のパレットがあれば閉じる */
+  var existing = document.getElementById('color-palette-popup');
+  if(existing){
+    var prevRoom = existing.getAttribute('data-room');
+    existing.remove();
+    if(prevRoom === String(roomIdx)) return; // 同じ部屋なら閉じるだけ
+  }
+  var anchor = ev.target;
+  var rect = anchor.getBoundingClientRect();
+  var pop = document.createElement('div');
+  pop.id = 'color-palette-popup';
+  pop.setAttribute('data-room', String(roomIdx));
+  pop.style.cssText = 'position:fixed;left:'+(rect.left)+'px;top:'+(rect.bottom+4)+'px;'
+    + 'background:#fff;border:1px solid #ddd;border-radius:6px;padding:6px;'
+    + 'box-shadow:0 4px 12px rgba(0,0,0,.15);z-index:10000;'
+    + 'display:grid;grid-template-columns:repeat(4,18px);gap:4px';
+  COLOR_PALETTE.forEach(function(col){
+    var sw = document.createElement('span');
+    sw.style.cssText = 'display:inline-block;width:18px;height:18px;background:'+col+';'
+      + 'border:1px solid rgba(0,0,0,.15);border-radius:3px;cursor:pointer';
+    sw.title = col;
+    sw.onclick = function(e){
+      e.stopPropagation();
+      setRoomColor(roomIdx, col);
+      pop.remove();
+    };
+    pop.appendChild(sw);
+  });
+  document.body.appendChild(pop);
+  /* 外側クリックで閉じる */
+  setTimeout(function(){
+    var closeHandler = function(e){
+      if(!pop.contains(e.target)){
+        pop.remove();
+        document.removeEventListener('mousedown', closeHandler);
+      }
+    };
+    document.addEventListener('mousedown', closeHandler);
+  }, 0);
 }
 function toggleRoomExpand(i){var el=document.getElementById('room-detail-'+i);if(el)el.style.display=el.style.display==='none'?'block':'none';}
 function renderRoomList(){
@@ -1600,7 +2363,9 @@ function renderRoomList(){
       var openings=r.openings||[];
       html+='<div style="border-bottom:1px solid #eee">'
         +'<div style="display:flex;align-items:center;padding:3px 8px;gap:4px;cursor:pointer" onclick="toggleRoomExpand('+i+')">'
-        +'<span style="color:'+r.color+';font-size:10px">■</span>'
+        +'<span onclick="event.stopPropagation();toggleColorPalette('+i+',event)" '
+        +'style="display:inline-block;width:14px;height:14px;background:'+r.color+';border:1px solid rgba(0,0,0,.15);border-radius:3px;cursor:pointer" '
+        +'title="クリックで色変更"></span>'
         +'<input type="text" value="'+r.name+'" onchange="rooms['+i+'].name=this.value;draw();" onclick="event.stopPropagation()" style="border:none;background:transparent;font-size:11px;width:70px">'
         +(isV?'<span style="font-size:9px;color:#0369A1;background:#E0F2FE;padding:1px 4px;border-radius:3px">多角形</span>':'<span style="font-size:10px;color:#aaa">'+uw+'×'+uh+'m</span>')
         +(openings.length>0?'<span style="font-size:9px;color:#888;margin-left:2px">▼'+openings.length+'</span>':'')
@@ -1609,7 +2374,7 @@ function renderRoomList(){
       if(openings.length>0){
         html+='<div id="room-detail-'+i+'" style="display:none;background:#f9f9f9;padding:2px 8px 4px 20px">';
         openings.forEach(function(o,j){
-          var typeLabel=o.type==='door'?'🚪':'🪟';
+          var typeLabel = o.type==='door'?'🚪' : o.type==='passage'?'🚧' : '🪟';
           var wallLabel=(o.edgeIndex!==undefined)?('辺'+(o.edgeIndex+1)):o.wall;
           var posLabel=Math.round((o.offsetAlongWall||0.5)*100)+'%';
           /* ドアならタイプ選択ドロップダウン、窓なら何もなし */
@@ -1619,14 +2384,21 @@ function renderRoomList(){
             if(dt==='slide') dt='slide_left'; /* 旧データを左引き戸として表示 */
             doorTypeSelect = '<select onchange="setDoorType('+i+','+j+',this.value)" '
               + 'style="font-size:10px;padding:1px 4px;border:1px solid #ccc;border-radius:3px;background:#fff;margin-left:4px">'
-              + '<option value="swing_left"'+(dt==='swing_left'?' selected':'')+'>← 左開き</option>'
-              + '<option value="swing_right"'+(dt==='swing_right'?' selected':'')+'>右開き →</option>'
+              + '<option value="swing_left"'+(dt==='swing_left'?' selected':'')+'>← 左開き(内)</option>'
+              + '<option value="swing_left_out"'+(dt==='swing_left_out'?' selected':'')+'>← 左開き(外)</option>'
+              + '<option value="swing_right"'+(dt==='swing_right'?' selected':'')+'>右開き(内) →</option>'
+              + '<option value="swing_right_out"'+(dt==='swing_right_out'?' selected':'')+'>右開き(外) →</option>'
               + '<option value="slide_left"'+(dt==='slide_left'?' selected':'')+'>←⇆ 引き戸(左)</option>'
               + '<option value="slide_right"'+(dt==='slide_right'?' selected':'')+'>⇆→ 引き戸(右)</option>'
               + '</select>';
           }
+          /* 幅入力ボックス(全タイプ共通) */
+          var widthInput = ' 幅:<input type="number" min="0.3" max="5.0" step="0.1" value="'+(o.width||0.9).toFixed(2)+'" '
+            +'onchange="setOpeningWidth('+i+','+j+',this.value)" '
+            +'style="font-size:10px;padding:1px 3px;width:48px;border:1px solid #ccc;border-radius:3px" title="幅(m)">m';
           html+='<div style="display:flex;align-items:center;gap:4px;padding:2px 0;font-size:10px;color:#555">'
             +typeLabel+' '+wallLabel+' ('+posLabel+')'
+            +widthInput
             +doorTypeSelect
             +'<button onclick="removeOpening('+i+','+j+')" style="border:none;background:none;color:#c0392b;cursor:pointer;font-size:10px;padding:0 4px;margin-left:auto">✕</button>'
             +'</div>';
@@ -1644,6 +2416,18 @@ function renderRoomList(){
         +'<span style="font-size:10px;color:#666;flex:1;margin-left:4px">'+f.name+'</span>'
         +'<span style="font-size:9px;color:#aaa">'+f.rotation+'°</span>'
         +'<button onclick="removeFurniture('+i+')" style="border:none;background:none;color:#c0392b;cursor:pointer;font-size:11px;padding:0 4px">✕</button>'
+        +'</div>';
+    });
+  }
+  /* ━━━ 独立壁リスト ━━━ */
+  if(walls.length>0){
+    html+='<div style="padding:3px 8px;font-size:10px;color:#aaa;background:#f5f5f5;border-bottom:1px solid #eee">🧱 独立壁</div>';
+    walls.forEach(function(wl,i){
+      var lenM = Math.sqrt(Math.pow((wl.x2-wl.x1)/BASE_SCALE,2)+Math.pow((wl.y2-wl.y1)/BASE_SCALE,2));
+      html+='<div style="display:flex;align-items:center;justify-content:space-between;padding:3px 8px;border-bottom:1px solid #eee">'
+        +'<span style="font-size:10px;color:#666;flex:1">壁 '+(i+1)+'</span>'
+        +'<span style="font-size:9px;color:#999">'+lenM.toFixed(2)+'m</span>'
+        +'<button onclick="removeWall('+i+')" style="border:none;background:none;color:#c0392b;cursor:pointer;font-size:11px;padding:0 4px">✕</button>'
         +'</div>';
     });
   }

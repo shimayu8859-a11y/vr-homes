@@ -702,7 +702,7 @@ select.finput{cursor:pointer}
   .search-field{min-width:unset;width:100%}
   .card-grid{grid-template-columns:1fr 1fr;gap:10px;padding:14px}
   .mypage-wrap{flex-direction:column}
-  .mypage-sidebar{width:100%;border-right:none;border-bottom:1px solid var(--border);padding:12px;display:flex;gap:4px;overflow-x:auto}
+  .mypage-sidebar{width:100%;border-right:none;border-bottom:1px solid var(--border);padding:10px;display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch}
   .mypage-main{padding:16px}
   .mypage-sidebar .avatar{display:none}
   .mypage-sidebar>div:first-child{display:none}
@@ -816,19 +816,24 @@ select.finput{cursor:pointer}
   .prop-loc{font-size:10px}
   .prop-footer{padding:6px 10px}
 
-  /* マイページ */
+  /* マイページ：サイドバーを横スクロールのタブ列に */
   .mypage-wrap{flex-direction:column}
   .mypage-sidebar{
     width:100%;border-right:none;border-bottom:1px solid var(--border);
-    padding:10px 8px;
-    display:flex;flex-direction:row;overflow-x:auto;gap:4px;
+    padding:10px;
+    display:flex;flex-direction:row;overflow-x:auto;gap:6px;
+    -webkit-overflow-scrolling:touch;
   }
-  .mypage-sidebar>div:first-child{display:none} /* アバター非表示 */
-  .mypage-sidebar>div:nth-child(2){display:none} /* 名前非表示 */
+  .mypage-sidebar>div:first-child{display:none} /* アバター・名前ブロック非表示 */
   .mp-nav-item{
-    padding:8px 12px;white-space:nowrap;border-radius:20px;
-    font-size:12px;flex-shrink:0;
+    padding:9px 16px;white-space:nowrap;border-radius:20px;
+    font-size:13px;flex-shrink:0;
+    background:var(--surface2);border:1px solid var(--border);
   }
+  .mp-nav-item.on{
+    background:var(--blue);color:#fff;border-color:var(--blue);
+  }
+  .mp-nav-item .badge{background:rgba(255,255,255,.3)}
   .mypage-main{padding:16px 14px}
 
   /* 物件詳細モーダル */

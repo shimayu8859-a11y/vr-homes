@@ -3,12 +3,13 @@
    キャッシュ戦略: Cache First（静的ファイル）
               + Network First（API）
 ============================================ */
-const CACHE_NAME    = 'vr-homes-v1';
+const CACHE_NAME    = 'vr-homes-v2';
 const STATIC_ASSETS = [
   './',
   './index.html',
   './site.css',
   './app.js',
+  './help.html',
   'https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css',
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css',
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js',

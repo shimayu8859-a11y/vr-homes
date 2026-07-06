@@ -356,6 +356,65 @@ function syncSearchToMap() {
 /* ══════════════════════════════════════
    AWS ユーザー同期
 ══════════════════════════════════════ */
+/* ══════════════════════════════════════
+   ユーザーデータのローカルキャッシュ
+   AWSが保存に失敗/未対応でもデータを保持する二重保存
+══════════════════════════════════════ */
+const USER_CACHE_KEY = 'vr_user_cache';
+
+/* 1ユーザー分のデータをローカルに保存（favs/history/role/active/photoURL/wishlist等） */
+function cacheUserLocal(user){
+  if(!user||!user.email) return;
+  let cache={};
+  try{ cache=JSON.parse(localStorage.getItem(USER_CACHE_KEY)||'{}'); }catch(e){}
+  cache[user.email]={
+    name:user.name, email:user.email, password:user.password,
+    role:user.role, active:user.active, photoURL:user.photoURL||null,
+    wishlist:user.wishlist||{}, favs:user.favs||[], history:user.history||[],
+    _updated:Date.now()
+  };
+  try{ localStorage.setItem(USER_CACHE_KEY, JSON.stringify(cache)); }catch(e){}
+}
+
+/* ローカルキャッシュ全体を取得 */
+function loadUserCache(){
+  try{ return JSON.parse(localStorage.getItem(USER_CACHE_KEY)||'{}'); }catch(e){ return {}; }
+}
+
+/* userStore にローカルキャッシュをマージ（キャッシュを優先） */
+function mergeUserCache(){
+  const cache=loadUserCache();
+  Object.values(cache).forEach(cu=>{
+    if(cu.email===MASTER_EMAIL) return; // マスターは固定
+    const existing=userStore.find(u=>u.email===cu.email);
+    if(existing){
+      // AWSより新しいローカル値で上書き（ユーザー個人データ）
+      existing.favs=cu.favs||existing.favs||[];
+      existing.history=cu.history||existing.history||[];
+      existing.role=cu.role||existing.role;
+      existing.active=(cu.active!==undefined)?cu.active:existing.active;
+      existing.photoURL=cu.photoURL||existing.photoURL;
+      existing.wishlist=cu.wishlist||existing.wishlist||{};
+      if(cu.password) existing.password=cu.password;
+    } else {
+      // AWSにないユーザーはキャッシュから復元
+      userStore.push({
+        name:cu.name, email:cu.email, password:cu.password,
+        role:cu.role||'user', active:cu.active!==false, photoURL:cu.photoURL||null,
+        wishlist:cu.wishlist||{}, favs:cu.favs||[], history:cu.history||[]
+      });
+    }
+  });
+}
+
+/* ローカルキャッシュからユーザーを削除 */
+function removeCachedUser(email){
+  let cache={};
+  try{ cache=JSON.parse(localStorage.getItem(USER_CACHE_KEY)||'{}'); }catch(e){}
+  delete cache[email];
+  try{ localStorage.setItem(USER_CACHE_KEY, JSON.stringify(cache)); }catch(e){}
+}
+
 async function fetchUsers(){
   if(!AWS_API_URL) return;
   try{
@@ -365,16 +424,21 @@ async function fetchUsers(){
     const awsUsers=users.filter(u=>u.email!==MASTER_EMAIL&&u.email!==DEMO_USER.email&&u.email!==DEMO_ADMIN.email);
     userStore=[MASTER_USER,DEMO_USER,DEMO_ADMIN,...awsUsers];
   }catch(e){ console.warn('ユーザー取得失敗（デモモードで続行）:',e.message); }
+  // AWS取得後、ローカルキャッシュを必ずマージ（データ消失を防ぐ）
+  mergeUserCache();
 }
 
+/* AWSとローカル両方に保存（ローカルは即時・確実） */
 async function saveUserToAWS(user){
+  cacheUserLocal(user); // まずローカルに確実保存
   if(!AWS_API_URL||user.email===MASTER_EMAIL) return;
   try{
     await fetch(AWS_API_URL+'?action=saveUser',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...user})});
-  }catch(e){console.warn('ユーザー保存失敗:',e.message);}
+  }catch(e){console.warn('ユーザー保存失敗（ローカルには保存済み）:',e.message);}
 }
 
 async function deleteUserFromAWS(email){
+  removeCachedUser(email); // ローカルからも削除
   if(!AWS_API_URL||email===MASTER_EMAIL) return;
   try{
     await fetch(AWS_API_URL+'?action=deleteUser&email='+encodeURIComponent(email),{method:'DELETE'});
@@ -553,13 +617,39 @@ function showGateMsg(msg,isError){
 
 function switchGateAuth(t){
   const isLogin=t==='login';
+  const isReset=t==='reset';
   const tl=document.getElementById('gatab-login'),tr=document.getElementById('gatab-reg');
   if(tl) tl.classList.toggle('on',isLogin);
-  if(tr) tr.classList.toggle('on',!isLogin);
+  if(tr) tr.classList.toggle('on',t==='reg');
   const msg=document.getElementById('gate-msg');if(msg) msg.style.display='none';
   const hint=document.getElementById('gate-switch-hint');
   const form=document.getElementById('gate-form');
   if(!form) return;
+
+  if(isReset){
+    form.innerHTML=`
+      <div style="font-size:13px;color:rgba(255,255,255,.7);margin-bottom:18px;line-height:1.7">
+        登録済みのメールアドレスと新しいパスワードを入力してください。
+      </div>
+      <div class="lfield"><label>メールアドレス</label>
+        <input class="linput" id="rst-email" type="text" placeholder="example@email.com" autocomplete="username"
+          onkeydown="handleFormKey(event,'rst-pass')">
+      </div>
+      <div class="lfield"><label>新しいパスワード（6文字以上）</label>
+        <div class="pass-wrap">
+          <input class="linput" id="rst-pass" type="password" placeholder="新しいパスワード" autocomplete="new-password"
+            onkeydown="handleFormKey(event,'rst-pass2')">
+          <button class="eye-btn" type="button" onclick="const i=document.getElementById('rst-pass');i.type=i.type==='password'?'text':'password'"><i class="ti ti-eye"></i></button>
+        </div>
+      </div>
+      <div class="lfield"><label>新しいパスワード（確認）</label>
+        <input class="linput" id="rst-pass2" type="password" placeholder="もう一度入力" autocomplete="new-password"
+          onkeydown="if(event.key==='Enter')gateResetPassword()">
+      </div>
+      <button class="lbtn" type="button" onclick="gateResetPassword()"><i class="ti ti-lock"></i> パスワードを再設定</button>`;
+    if(hint) hint.innerHTML='<a onclick="switchGateAuth(\'login\')">← ログインに戻る</a>';
+    return;
+  }
 
   if(isLogin){
     form.innerHTML=`
@@ -574,7 +664,7 @@ function switchGateAuth(t){
           <button class="eye-btn" id="g-eye" type="button" onclick="toggleGateEye()"><i class="ti ti-eye"></i></button>
         </div>
       </div>
-      <div style="text-align:right;font-size:11px;color:#93c5fd;cursor:pointer;margin-bottom:20px">パスワードをお忘れですか？</div>
+      <div style="text-align:right;font-size:11px;color:#93c5fd;cursor:pointer;margin-bottom:20px" onclick="switchGateAuth('reset')">パスワードをお忘れですか？</div>
       <button class="lbtn" type="button" onclick="gateLogin()"><i class="ti ti-login"></i> ログイン</button>`;
     if(hint) hint.innerHTML='アカウントをお持ちでない方は <a onclick="switchGateAuth(\'reg\')">新規登録</a>';
   } else {
@@ -629,7 +719,9 @@ function _enterApp(user){
   isLoggedIn=true;currentUser=user;
   favs=new Set(Array.isArray(user.favs)?user.favs:[]);
   viewHistory=(user.history||[]).map(h=>({...h,time:new Date(h.time)}));
-  document.getElementById('login-gate').classList.add('hidden');
+  const gate=document.getElementById('login-gate');
+  gate.classList.add('hidden');
+  gate.style.display='none';
   applyRoleUI();
   refreshAllFilters();
   if(isMaster()){
@@ -644,9 +736,18 @@ function _enterApp(user){
 function restoreSession(){
   let email=null;
   try{ email=localStorage.getItem('vr_session_email'); }catch(e){}
-  if(!email) return false;
+  const gate=document.getElementById('login-gate');
+  const showGate=()=>{
+    document.documentElement.classList.remove('has-session');
+    if(gate){ gate.style.display=''; gate.classList.remove('hidden'); }
+  };
+  if(!email){ showGate(); return false; }
   const user=userStore.find(u=>u.email===email);
-  if(!user||!user.active) { try{localStorage.removeItem('vr_session_email');}catch(e){} return false; }
+  if(!user||!user.active) {
+    try{localStorage.removeItem('vr_session_email');}catch(e){}
+    showGate();
+    return false;
+  }
   _enterApp(user);
   return true;
 }
@@ -666,16 +767,102 @@ function gateRegister(){
   setTimeout(()=>switchGateAuth('login'),1200);
 }
 
+/* パスワード再設定：ステップ1（メール＋新パスワード入力→6桁コード送信） */
+let _resetPending = null; // {email, newPass, code, expires}
+
+async function gateResetPassword(){
+  const email=(document.getElementById('rst-email')||{}).value?.trim()||'';
+  const pass=(document.getElementById('rst-pass')||{}).value||'';
+  const pass2=(document.getElementById('rst-pass2')||{}).value||'';
+  if(!email){showGateMsg('メールアドレスを入力してください',true);return;}
+  const user=userStore.find(u=>u.email===email);
+  if(!user){showGateMsg('そのメールアドレスは登録されていません',true);return;}
+  if(user.email===MASTER_EMAIL){showGateMsg('このアカウントは変更できません',true);return;}
+  if(pass.length<6){showGateMsg('パスワードは6文字以上で入力してください',true);return;}
+  if(pass!==pass2){showGateMsg('パスワードが一致しません',true);return;}
+
+  // 6桁コード生成
+  const code=String(Math.floor(100000+Math.random()*900000));
+  _resetPending={email,newPass:pass,code,expires:Date.now()+10*60*1000};
+
+  showGateMsg('確認コードを送信中...',false);
+  // AWS経由でメール送信を試みる
+  let mailSent=false;
+  if(AWS_API_URL){
+    try{
+      const res=await fetch(AWS_API_URL+'?action=sendResetCode',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({email,code})
+      });
+      if(res.ok){ const d=await res.json().catch(()=>({})); if(d&&d.success) mailSent=true; }
+    }catch(e){ console.warn('メール送信失敗:',e.message); }
+  }
+  // ステップ2の画面へ
+  switchGateAuthToVerify(email, mailSent, code);
+}
+
+/* コード入力画面を表示 */
+function switchGateAuthToVerify(email, mailSent, code){
+  const form=document.getElementById('gate-form');
+  const hint=document.getElementById('gate-switch-hint');
+  const msg=document.getElementById('gate-msg');if(msg) msg.style.display='none';
+  const tl=document.getElementById('gatab-login');if(tl) tl.classList.remove('on');
+  const tr=document.getElementById('gatab-reg');if(tr) tr.classList.remove('on');
+  // メール未送信（Lambda未対応）の場合はデモ用にコードを画面表示
+  const devHint = mailSent
+    ? `<div style="font-size:12px;color:rgba(255,255,255,.6);margin-bottom:16px;line-height:1.7"><strong style="color:#93c5fd">${email}</strong> に6桁の確認コードを送信しました。メールをご確認ください。</div>`
+    : `<div style="font-size:12px;color:#fbbf24;margin-bottom:8px;line-height:1.7;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);border-radius:8px;padding:10px 12px">
+         <i class="ti ti-alert-triangle"></i> メール送信は現在ご利用いただけません（デモモード）。<br>確認コード：<strong style="font-size:18px;letter-spacing:.15em;color:#fff">${code}</strong>
+       </div>`;
+  form.innerHTML=`
+    ${devHint}
+    <div class="lfield"><label>確認コード（6桁）</label>
+      <input class="linput" id="rst-code" type="text" inputmode="numeric" maxlength="6"
+        placeholder="000000" autocomplete="one-time-code"
+        style="letter-spacing:.4em;text-align:center;font-size:20px"
+        onkeydown="if(event.key==='Enter')gateVerifyCode()">
+    </div>
+    <button class="lbtn" type="button" onclick="gateVerifyCode()"><i class="ti ti-shield-check"></i> 認証して再設定</button>
+    <div style="text-align:center;margin-top:12px">
+      <span style="font-size:12px;color:#93c5fd;cursor:pointer" onclick="switchGateAuth('reset')">← やり直す</span>
+    </div>`;
+  if(hint) hint.innerHTML='<a onclick="switchGateAuth(\'login\')">ログインに戻る</a>';
+  setTimeout(()=>{const c=document.getElementById('rst-code');if(c) c.focus();},100);
+}
+
+/* ステップ2：コード検証→パスワード確定 */
+function gateVerifyCode(){
+  const input=(document.getElementById('rst-code')||{}).value?.trim()||'';
+  if(!_resetPending){showGateMsg('セッションが切れました。最初からやり直してください',true);return;}
+  if(Date.now()>_resetPending.expires){showGateMsg('コードの有効期限が切れました。やり直してください',true);_resetPending=null;return;}
+  if(input!==_resetPending.code){showGateMsg('確認コードが正しくありません',true);return;}
+  // 確定
+  const user=userStore.find(u=>u.email===_resetPending.email);
+  if(!user){showGateMsg('ユーザーが見つかりません',true);return;}
+  user.password=_resetPending.newPass;
+  saveUserToAWS(user);
+  const email=_resetPending.email;
+  _resetPending=null;
+  showGateMsg('✓ パスワードを再設定しました。ログインしてください',false);
+  setTimeout(()=>{
+    switchGateAuth('login');
+    const em=document.getElementById('g-email');if(em) em.value=email;
+  },1400);
+}
+
 function doLogout(){
   isLoggedIn=false;currentUser=null;
   try{ localStorage.removeItem('vr_session_email'); }catch(e){}
+  document.documentElement.classList.remove('has-session');
   // ログイン画面フォームをリセット
   const form=document.getElementById('gate-form');
   if(form) form.innerHTML='';
   const tl=document.getElementById('gatab-login');if(tl) tl.classList.add('on');
   const tr=document.getElementById('gatab-reg');if(tr) tr.classList.remove('on');
   switchGateAuth('login');
-  document.getElementById('login-gate').classList.remove('hidden');
+  const gate=document.getElementById('login-gate');
+  gate.classList.remove('hidden');
+  gate.style.display='';
   window.scrollTo(0,0);
 }
 
@@ -708,6 +895,7 @@ function submitCode(){
     const newRole=okMaster?'master':'admin';
     currentUser.role=newRole;
     const s=userStore.find(u=>u.email===currentUser.email);if(s) s.role=newRole;
+    saveUserToAWS(currentUser); // ロール変更をローカル＆AWSに保存（リロードでも維持）
     showMsg(`✓ ${okMaster?'マスター':'管理者'}として認証されました！`,true);
     applyRoleUI();
     if(okMaster){renderFieldManagement();if(isAdUnlocked()){_showAdTab();renderAdManagement();}}
@@ -1012,10 +1200,11 @@ function showScreen(id){
   if(isAdUnlocked() && isAdPopupEnabled()) showAdPopup();
 }
 function guardedScreen(id){
-  if(!isLoggedIn){document.getElementById('login-gate').classList.remove('hidden');return;}
+  if(!isLoggedIn){const g=document.getElementById('login-gate');g.classList.remove('hidden');g.style.display='';return;}
   if(id==='admin'&&!isAdmin()){alert('管理者権限が必要です');return;}
   if(id==='master'&&!isMaster()){alert('マスター権限が必要です');return;}
   if(id==='admin') renderUserTable();
+  if(id==='mypage'){ renderFavorites(); updateInboxBadge(); } // マイページを開いたらお気に入りとバッジ更新
   if(id==='master'){
     renderMasterUserTable();renderRoleTable();renderFieldManagement();
     // 広告タブは解放済みの場合のみ表示
@@ -1375,6 +1564,153 @@ async function scheduleAutoGeocode(){
 /* ══════════════════════════════════════
    TOAST
 ══════════════════════════════════════ */
+/* ══════════════════════════════════════
+   お問い合わせ / サイト内メッセージ
+══════════════════════════════════════ */
+const INBOX_KEY = 'vr_inbox';
+
+/* サイト内メッセージをローカルに保存（宛先ごと） */
+function saveMessage(msg){
+  let inbox={};
+  try{ inbox=JSON.parse(localStorage.getItem(INBOX_KEY)||'{}'); }catch(e){}
+  if(!inbox[msg.to]) inbox[msg.to]=[];
+  inbox[msg.to].unshift(msg);
+  try{ localStorage.setItem(INBOX_KEY, JSON.stringify(inbox)); }catch(e){}
+}
+function getMessagesFor(email){
+  let inbox={};
+  try{ inbox=JSON.parse(localStorage.getItem(INBOX_KEY)||'{}'); }catch(e){}
+  return inbox[email]||[];
+}
+function markMessagesRead(email){
+  let inbox={};
+  try{ inbox=JSON.parse(localStorage.getItem(INBOX_KEY)||'{}'); }catch(e){}
+  if(inbox[email]){ inbox[email].forEach(m=>m.read=true); localStorage.setItem(INBOX_KEY, JSON.stringify(inbox)); }
+}
+function unreadCount(email){
+  return getMessagesFor(email).filter(m=>!m.read).length;
+}
+
+/* AWS経由で実メール送信を試みる */
+async function sendRealMail(to, subject, body){
+  if(!AWS_API_URL) return false;
+  try{
+    const res=await fetch(AWS_API_URL+'?action=sendMail',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({to,subject,body})
+    });
+    if(res.ok){ const d=await res.json().catch(()=>({})); return !!(d&&d.success); }
+  }catch(e){ console.warn('メール送信失敗:',e.message); }
+  return false;
+}
+
+/* 物件へのお問い合わせフォームを開く */
+function openContactForm(propId){
+  const prop=PROPS.find(p=>p.id===propId);
+  if(!prop){alert('物件が見つかりません');return;}
+  const ov=document.getElementById('contact-overlay');
+  const body=document.getElementById('contact-body');
+  const ownerLabel = prop.ownerName ? `${prop.ownerName} さん` : '担当者';
+  body.innerHTML=`
+    <div style="font-size:12px;color:#64748b;margin-bottom:16px;line-height:1.7">
+      <strong style="color:var(--navy)">${prop.name}</strong> について、${ownerLabel}へお問い合わせします。
+    </div>
+    <div class="field"><div class="flabel">お名前</div>
+      <input class="finput" id="ct-name" value="${currentUser?currentUser.name:''}" placeholder="お名前"></div>
+    <div class="field"><div class="flabel">返信先メールアドレス</div>
+      <input class="finput" id="ct-email" value="${currentUser?currentUser.email:''}" placeholder="you@example.com"></div>
+    <div class="field"><div class="flabel">お問い合わせ内容</div>
+      <textarea class="finput" id="ct-msg" rows="5" placeholder="内見希望日、質問など" style="resize:vertical"></textarea></div>
+    <div id="ct-status" style="display:none;font-size:12px;margin-bottom:10px"></div>
+    <button class="btn btn-p" style="width:100%;justify-content:center;padding:11px" onclick="submitContact(${propId})">
+      <i class="ti ti-send"></i> 送信する
+    </button>`;
+  ov.classList.add('show');
+}
+function closeContactForm(){ document.getElementById('contact-overlay').classList.remove('show'); }
+
+async function submitContact(propId){
+  const prop=PROPS.find(p=>p.id===propId);if(!prop) return;
+  const name=(document.getElementById('ct-name')||{}).value?.trim()||'';
+  const email=(document.getElementById('ct-email')||{}).value?.trim()||'';
+  const text=(document.getElementById('ct-msg')||{}).value?.trim()||'';
+  const status=document.getElementById('ct-status');
+  const show=(t,ok)=>{status.style.cssText=`display:block;font-size:12px;margin-bottom:10px;color:${ok?'var(--green)':'var(--red)'}`;status.textContent=t;};
+  if(!name||!email){show('お名前とメールアドレスを入力してください',false);return;}
+  if(!text){show('お問い合わせ内容を入力してください',false);return;}
+  const to=prop.ownerEmail||MASTER_EMAIL; // 登録者、なければマスター
+  const msg={
+    id:'m'+Date.now(), to, from:email, fromName:name,
+    subject:`【物件お問い合わせ】${prop.name}`,
+    body:text, propId:prop.id, propName:prop.name,
+    time:new Date().toISOString(), read:false
+  };
+  // サイト内メール保存
+  saveMessage(msg);
+  // 実メール送信
+  show('送信中...',true);
+  const mailOk=await sendRealMail(to, msg.subject, `${name} 様（${email}）からお問い合わせがありました。\n\n物件：${prop.name}\n\n${text}`);
+  show(mailOk?'✓ 送信しました（サイト内メール＋メール送信）':'✓ サイト内メールに送信しました',true);
+  updateInboxBadge();
+  setTimeout(closeContactForm,1600);
+}
+
+/* マスター宛お問い合わせ送信 */
+async function submitMasterContact(){
+  const name=(document.getElementById('mc-name')||{}).value?.trim()||'';
+  const email=(document.getElementById('mc-email')||{}).value?.trim()||'';
+  const text=(document.getElementById('mc-msg')||{}).value?.trim()||'';
+  const status=document.getElementById('mc-status');
+  const show=(t,ok)=>{if(status){status.style.cssText=`display:block;font-size:12px;margin:10px 0;color:${ok?'var(--green)':'var(--red)'}`;status.textContent=t;}};
+  if(!name||!email||!text){show('すべての項目を入力してください',false);return;}
+  const msg={
+    id:'m'+Date.now(), to:MASTER_EMAIL, from:email, fromName:name,
+    subject:'【運営へのお問い合わせ】', body:text,
+    time:new Date().toISOString(), read:false
+  };
+  saveMessage(msg);
+  show('送信中...',true);
+  const mailOk=await sendRealMail(MASTER_EMAIL,'【運営へのお問い合わせ】',`${name} 様（${email}）\n\n${text}`);
+  show(mailOk?'✓ 送信しました':'✓ サイト内メールに送信しました',true);
+  updateInboxBadge();
+  ['mc-name','mc-email','mc-msg'].forEach(id=>{const el=document.getElementById(id);if(el&&id==='mc-msg') el.value='';});
+}
+
+/* 受信箱を描画（マイページ・受信箱タブ） */
+function renderInbox(){
+  const container=document.getElementById('mp-inbox-list');
+  if(!container||!currentUser) return;
+  const msgs=getMessagesFor(currentUser.email);
+  markMessagesRead(currentUser.email);
+  updateInboxBadge();
+  if(!msgs.length){
+    container.innerHTML=`<div style="padding:40px 0;text-align:center;color:#94a3b8">
+      <i class="ti ti-inbox" style="font-size:40px;display:block;margin-bottom:12px;opacity:.3"></i>
+      <div style="font-size:13px">受信メッセージはありません</div></div>`;return;
+  }
+  container.innerHTML=msgs.map(m=>`
+    <div class="card" style="margin-bottom:10px;padding:16px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+        <div style="font-size:13px;font-weight:700;color:var(--navy)">${m.subject}</div>
+        <div style="font-size:11px;color:#94a3b8;flex-shrink:0;margin-left:8px">${formatTimeAgo(new Date(m.time))}</div>
+      </div>
+      <div style="font-size:12px;color:#64748b;margin-bottom:8px">
+        <i class="ti ti-user"></i> ${m.fromName} <span style="color:#94a3b8">（${m.from}）</span>
+      </div>
+      <div style="font-size:13px;color:var(--navy);line-height:1.7;white-space:pre-wrap;background:var(--surface2);border-radius:8px;padding:12px">${m.body}</div>
+      <div style="margin-top:10px">
+        <a href="mailto:${m.from}?subject=Re: ${encodeURIComponent(m.subject)}" class="btn btn-sm"><i class="ti ti-corner-up-left"></i> メールで返信</a>
+      </div>
+    </div>`).join('');
+}
+
+function updateInboxBadge(){
+  if(!currentUser) return;
+  const n=unreadCount(currentUser.email);
+  const badge=document.getElementById('mp-inbox-badge');
+  if(badge){ badge.textContent=n; badge.style.display=n>0?'inline-block':'none'; }
+}
+
 function showToast(message,type='info',duration=3500){
   let host=document.getElementById('toast-container');
   if(!host){host=document.createElement('div');host.id='toast-container';host.className='toast-container';document.body.appendChild(host);}
@@ -1691,6 +2027,7 @@ async function addProperty(){
   // 「駅を自動取得」で取得済みの座標があれば流用
   const preCoords=window._afGeoCoords||null;
   const newProp={id:nextPropId++,name,area,address,station,walkMin,price:rent,mgmt,deposit,key:keyMoney,madori,size,type,structure,age,features:[],tags:[],description:desc,
+    ownerEmail:(currentUser&&currentUser.email)||null, ownerName:(currentUser&&currentUser.name)||null,
     photoURLs:newPhotoURLs,floorplanURL:window.editedFloorplanThumb||null,floorplanData:window.editedFloorplanData||null,
     lat:preCoords?preCoords.lat:null,lng:preCoords?preCoords.lng:null};
   PROPS.push(newProp);renderCards();renderAdminPropTable();updateResultsCount();renderMapSidebar();
@@ -1728,9 +2065,11 @@ _style.textContent='@keyframes spin{to{transform:rotate(360deg)}}@keyframes toas
 document.head.appendChild(_style);
 
 function switchMp(id,el){
-  ['fav','hist','prof','wish','code'].forEach(k=>{const e=document.getElementById('mp-'+k);if(e) e.style.display=k===id?'block':'none';});
+  ['fav','inbox','hist','prof','wish','code'].forEach(k=>{const e=document.getElementById('mp-'+k);if(e) e.style.display=k===id?'block':'none';});
   document.querySelectorAll('.mp-nav-item').forEach(i=>i.classList.remove('on'));el.classList.add('on');
-  if(id==='fav') renderFavorites();if(id==='hist') renderHistory();
+  if(id==='fav') renderFavorites();
+  if(id==='inbox') renderInbox();
+  if(id==='hist') renderHistory();
 }
 function switchAdmin(id,el){
   ['props','users','stats'].forEach(k=>document.getElementById('admin-'+k).style.display=k===id?'block':'none');

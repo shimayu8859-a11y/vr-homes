@@ -1423,15 +1423,32 @@ async function geocodeAddress(rawAddr){
 
 /* 座標から最寄り駅を検索（Overpass API：半径2km内の駅を距離順に） */
 async function findNearestStation(lat,lng){
-  const query=`[out:json][timeout:15];(node["railway"="station"](around:2000,${lat},${lng});node["station"="subway"](around:2000,${lat},${lng}););out body 30;`;
+  // 鉄道駅・地下鉄駅のみを厳密に取得（観光地や停留所を除外）
+  const query=`[out:json][timeout:20];(
+    node["railway"="station"](around:2500,${lat},${lng});
+    node["railway"="station"]["station"="subway"](around:2500,${lat},${lng});
+    way["railway"="station"](around:2500,${lat},${lng});
+  );out center body 40;`;
   const endpoints=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter'];
   for(const ep of endpoints){
     try{
       const res=await fetch(ep,{method:'POST',body:'data='+encodeURIComponent(query)});
       if(!res.ok) continue;
       const data=await res.json();
-      const els=(data.elements||[]).filter(e=>e.tags&&(e.tags.name||e.tags['name:ja']));
+      let els=(data.elements||[]).filter(e=>{
+        const t=e.tags||{};
+        // 駅名があり、かつ鉄道駅であること（観光地・バス停等を除外）
+        if(!(t.name||t['name:ja'])) return false;
+        if(t.railway!=='station') return false;
+        // 廃駅・貨物駅などを除外
+        if(t.disused==='yes'||t.abandoned==='yes'||t.usage==='freight') return false;
+        return true;
+      });
       if(!els.length) continue;
+      // 座標補正（way の場合は center を使う）
+      els.forEach(e=>{
+        if(e.type==='way'&&e.center){e.lat=e.center.lat;e.lon=e.center.lon;}
+      });
       // 距離計算
       const toRad=d=>d*Math.PI/180;
       const dist=(la,lo)=>{
@@ -1441,17 +1458,30 @@ async function findNearestStation(lat,lng){
       };
       els.forEach(e=>{e._d=dist(e.lat,e.lon);});
       els.sort((a,b)=>a._d-b._d);
-      const near=els[0];
-      let name=(near.tags['name:ja']||near.tags.name||'').replace(/駅$/,'').replace(/\s*Station$/i,'');
-      // 徒歩分数：不動産表記に合わせ 80m=1分 で切り上げ
-      const walkMin=Math.max(1,Math.ceil(near._d/80));
-      return {name,walkMin,distance:Math.round(near._d)};
+      // 同名駅の重複を除去（路線違いで同じ駅名が複数出ることがある）
+      const seen=new Set();
+      const unique=[];
+      for(const e of els){
+        const nm=(e.tags['name:ja']||e.tags.name||'').replace(/駅$/,'').replace(/\s*Station$/i,'');
+        if(seen.has(nm)) continue;
+        seen.add(nm);
+        // 路線名を取得（line, network, operator の順で拾う）
+        const line=e.tags['line']||e.tags['railway:ref']||e.tags['network']||e.tags['operator']||'';
+        unique.push({
+          name:nm,
+          line:line.replace(/\s*Line$/i,'線').trim(),
+          walkMin:Math.max(1,Math.ceil(e._d/80)),
+          distance:Math.round(e._d)
+        });
+        if(unique.length>=3) break; // 上位3駅
+      }
+      return unique; // 配列で返す
     }catch(e){ console.warn('station search error:',e); }
   }
   return null;
 }
 
-/* 住所欄から座標を取得し、最寄駅・徒歩分を自動入力 */
+/* 住所欄から座標を取得し、最寄駅（複数）・徒歩分を自動入力 */
 let _autoFilling=false;
 async function autoFillFromAddress(){
   if(_autoFilling) return;
@@ -1464,30 +1494,39 @@ async function autoFillFromAddress(){
     statusEl.style.cssText=`font-size:11px;margin-top:5px;display:block;color:${colors[type]||colors.info}`;
     statusEl.textContent=text;
   };
-  if(!addr){ setStatus('住所を入力してください',{}.warn||'warn'); setStatus('住所を入力してください','warn'); return; }
+  if(!addr){ setStatus('住所を入力してください','warn'); return; }
   _autoFilling=true;
   setStatus('📍 住所から位置を検索中...','info');
   try{
     const coords=await geocodeAddress(addr);
     if(!coords){ setStatus('住所から位置を特定できませんでした。番地を省いて試してください','err'); _autoFilling=false; return; }
-    // エリアが空なら住所の頭（都道府県＋市区町村）を補完
     const areaEl=document.getElementById('af-area');
     if(areaEl&&!areaEl.value.trim()){
       const m=normalizeAddress(addr).match(/^(.+?[都道府県])?(.+?[市区町村])/);
       if(m) areaEl.value=(m[1]||'')+(m[2]||'');
     }
     setStatus('🚉 最寄り駅を検索中...','info');
-    const st=await findNearestStation(coords.lat,coords.lng);
-    if(st){
+    const stations=await findNearestStation(coords.lat,coords.lng);
+    if(stations&&stations.length){
+      // 1駅目をメインの駅欄に入れる
       const stEl=document.getElementById('af-station');
       const walkEl=document.getElementById('af-walk-min');
-      if(stEl) stEl.value=st.name;
-      if(walkEl) walkEl.value=st.walkMin;
-      setStatus(`✓ 最寄り駅：${st.name}駅（徒歩約${st.walkMin}分・約${st.distance}m）を自動入力しました`,'ok');
+      if(stEl) stEl.value=stations[0].name;
+      if(walkEl) walkEl.value=stations[0].walkMin;
+      // 複数駅を af-stations（詳細用）に保存
+      window._afStations=stations;
+      // アクセス欄に複数駅を表示
+      const accessEl=document.getElementById('af-access');
+      if(accessEl){
+        accessEl.value=stations.map(s=>
+          `${s.line?s.line+'/':''}${s.name}駅 徒歩${s.walkMin}分`
+        ).join('\n');
+      }
+      const list=stations.map(s=>`${s.name}駅(徒歩${s.walkMin}分)`).join('、');
+      setStatus(`✓ 最寄り駅 ${stations.length}件：${list} を自動入力しました`,'ok');
     } else {
       setStatus('✓ 位置は特定できましたが、近くに駅が見つかりませんでした','warn');
     }
-    // 編集中の座標を一時保持（登録時に使用）
     window._afGeoCoords={lat:coords.lat,lng:coords.lng};
   }catch(e){
     setStatus('エラーが発生しました：'+e.message,'err');
@@ -2035,6 +2074,14 @@ function startEditProp(id){
   set('af-deposit',prop.deposit);set('af-key',prop.key);set('af-madori',prop.madori);set('af-size',prop.size);
   set('af-station',prop.station);set('af-walk-min',prop.walkMin);set('af-address',prop.address);
   set('af-desc',prop.description);set('af-age',prop.age);
+  set('af-access',prop.access);
+  // 詳細情報を読み込み
+  const d=prop.details||{};
+  set('af-available',d.available);set('af-transaction',d.transaction);set('af-units',d.units);
+  set('af-parking',d.parking);set('af-contract',d.contract);set('af-renewal',d.renewal);
+  set('af-guarantor',d.guarantor);set('af-conditions',d.conditions);set('af-insurance',d.insurance);
+  set('af-otherfees',d.otherfees);set('af-surroundings',d.surroundings);
+  _newPhotoQueue=[]; renderNewPhotoPreview(); // 新規写真キューをリセット
   const selType=document.getElementById('af-type');
   if(selType){for(let i=0;i<selType.options.length;i++) if(selType.options[i].text===prop.type){selType.selectedIndex=i;break;}}
   const selStr=document.getElementById('af-structure');
@@ -2057,11 +2104,26 @@ function renderExistingPhotosPreview(){
   }
   wrap.style.display='block';if(hint) hint.style.display='block';
   list.innerHTML=editingExistingPhotos.map((url,i)=>`
-    <div style="position:relative;width:80px;height:60px;border:1px solid var(--border);border-radius:6px;overflow:hidden">
-      <img src="${url}" style="width:100%;height:100%;object-fit:cover">
-      <button onclick="removeExistingPhoto(${i})" style="position:absolute;top:2px;right:2px;width:20px;height:20px;border-radius:50%;border:none;background:rgba(220,38,38,.9);color:#fff;cursor:pointer;font-size:11px;display:flex;align-items:center;justify-content:center">✕</button>
+    <div style="width:80px">
+      <div style="position:relative;width:80px;height:60px;border:2px solid ${i===0?'var(--blue)':'var(--border)'};border-radius:6px;overflow:hidden">
+        <img src="${url}" style="width:100%;height:100%;object-fit:cover">
+        ${i===0?'<div style="position:absolute;top:0;left:0;background:var(--blue);color:#fff;font-size:8px;font-weight:700;padding:1px 4px;border-bottom-right-radius:5px">メイン</div>':''}
+        <button onclick="removeExistingPhoto(${i})" style="position:absolute;top:2px;right:2px;width:18px;height:18px;border-radius:50%;border:none;background:rgba(220,38,38,.9);color:#fff;cursor:pointer;font-size:10px;display:flex;align-items:center;justify-content:center;padding:0">✕</button>
+      </div>
+      <div style="display:flex;justify-content:center;gap:3px;margin-top:2px">
+        <button type="button" onclick="moveExistingPhoto(${i},-1)" ${i===0?'disabled':''} style="width:24px;height:20px;border-radius:4px;border:1px solid var(--border);background:var(--surface);cursor:pointer;font-size:11px;padding:0">←</button>
+        <button type="button" onclick="moveExistingPhoto(${i},1)" ${i===editingExistingPhotos.length-1?'disabled':''} style="width:24px;height:20px;border-radius:4px;border:1px solid var(--border);background:var(--surface);cursor:pointer;font-size:11px;padding:0">→</button>
+      </div>
     </div>`).join('');
 }
+
+function moveExistingPhoto(index, dir){
+  const ni=index+dir;
+  if(ni<0||ni>=editingExistingPhotos.length) return;
+  [editingExistingPhotos[index], editingExistingPhotos[ni]]=[editingExistingPhotos[ni], editingExistingPhotos[index]];
+  renderExistingPhotosPreview();
+}
+window.moveExistingPhoto=moveExistingPhoto;
 
 function removeExistingPhoto(index){editingExistingPhotos.splice(index,1);renderExistingPhotosPreview();}
 window.removeExistingPhoto=removeExistingPhoto;
@@ -2150,6 +2212,45 @@ function renderPropDetail(prop){
   const features=[...(prop.features||[]),...(prop.tags||[])];
   document.getElementById('pd-features').innerHTML=features.length?features.map(f=>`<span class="pd-feature">${f}</span>`).join(''):'<span style="color:#94a3b8;font-size:12px">なし</span>';
   document.getElementById('pd-desc').textContent=prop.description||'詳細情報はお問い合わせください。';
+
+  // アクセス（複数駅）
+  const accessEl=document.getElementById('pd-access');
+  const accessTitle=document.getElementById('pd-access-title');
+  if(prop.access&&prop.access.trim()){
+    accessTitle.style.display='block';
+    accessEl.innerHTML=prop.access.trim().split('\n').filter(l=>l.trim()).map(line=>
+      `<div><i class="ti ti-train" style="color:var(--blue);font-size:13px"></i> ${line.trim()}</div>`
+    ).join('');
+  } else {
+    accessTitle.style.display='none';accessEl.innerHTML='';
+  }
+
+  // 詳細情報（任意項目・入力されているものだけ表示）
+  const d=prop.details||{};
+  const detailRows=[
+    ['入居時期',d.available],['取引態様',d.transaction],['総戸数',d.units],
+    ['駐車場',d.parking],['契約期間',d.contract],['更新料',d.renewal],
+    ['保証会社',d.guarantor],['入居条件',d.conditions],['損保',d.insurance],
+    ['その他費用',d.otherfees]
+  ].filter(([l,v])=>v&&v.trim());
+  const detailsSection=document.getElementById('pd-details-section');
+  if(detailRows.length){
+    detailsSection.style.display='block';
+    document.getElementById('pd-details').innerHTML=detailRows.map(([l,v])=>
+      `<div class="pd-cost-row"><span class="pd-cost-label">${l}</span><span class="pd-cost-value" style="text-align:right;max-width:60%">${v}</span></div>`
+    ).join('');
+  } else {
+    detailsSection.style.display='none';
+  }
+
+  // 周辺情報
+  const surrSection=document.getElementById('pd-surroundings-section');
+  if(d.surroundings&&d.surroundings.trim()){
+    surrSection.style.display='block';
+    document.getElementById('pd-surroundings').textContent=d.surroundings.trim();
+  } else {
+    surrSection.style.display='none';
+  }
   document.getElementById('pd-address').innerHTML=`<div style="font-size:13px;color:#64748b;line-height:1.8">
     ${prop.address?`<i class="ti ti-map-pin" style="color:var(--blue)"></i> ${prop.address}<br>`:''}
     <span style="font-size:11px;color:#94a3b8">${prop.area||''} ${prop.station?'・'+prop.station+'駅 徒歩'+(prop.walkMin||'?')+'分':''}</span>
@@ -2234,6 +2335,61 @@ async function uploadPhotosToS3(dataURLs){
   return results;
 }
 
+/* ══════════════════════════════════════
+   新規写真のプレビュー＆並べ替え
+══════════════════════════════════════ */
+let _newPhotoQueue = []; // {dataURL, name}
+
+async function previewNewPhotos(){
+  const input=document.getElementById('af-photo');
+  if(!input||!input.files.length){ return; }
+  for(const file of input.files){
+    try{
+      const dataURL=await resizeImageToDataURL(file,1200,0.85);
+      _newPhotoQueue.push({dataURL, name:file.name});
+    }catch(e){
+      try{ _newPhotoQueue.push({dataURL:await readFileAsDataURL(file), name:file.name}); }catch(_){}
+    }
+  }
+  input.value='';
+  renderNewPhotoPreview();
+}
+
+function renderNewPhotoPreview(){
+  const wrap=document.getElementById('af-new-photos-preview');
+  const list=document.getElementById('af-new-photos-list');
+  if(!wrap||!list) return;
+  if(!_newPhotoQueue.length){ wrap.style.display='none'; list.innerHTML=''; return; }
+  wrap.style.display='block';
+  list.innerHTML=_newPhotoQueue.map((p,i)=>`
+    <div style="position:relative;width:88px">
+      <div style="position:relative;width:88px;height:88px;border-radius:8px;overflow:hidden;border:2px solid ${i===0?'var(--blue)':'var(--border)'}">
+        <img src="${p.dataURL}" style="width:100%;height:100%;object-fit:cover">
+        ${i===0?'<div style="position:absolute;top:0;left:0;background:var(--blue);color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-bottom-right-radius:6px">メイン</div>':''}
+        <button type="button" onclick="removeNewPhoto(${i})" style="position:absolute;top:2px;right:2px;width:20px;height:20px;border-radius:50%;background:rgba(220,38,38,.9);color:#fff;border:none;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;padding:0">×</button>
+      </div>
+      <div style="display:flex;justify-content:center;gap:4px;margin-top:3px">
+        <button type="button" onclick="moveNewPhoto(${i},-1)" ${i===0?'disabled':''} style="width:26px;height:22px;border-radius:5px;border:1px solid var(--border);background:var(--surface);cursor:pointer;font-size:12px;padding:0">←</button>
+        <button type="button" onclick="moveNewPhoto(${i},1)" ${i===_newPhotoQueue.length-1?'disabled':''} style="width:26px;height:22px;border-radius:5px;border:1px solid var(--border);background:var(--surface);cursor:pointer;font-size:12px;padding:0">→</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function moveNewPhoto(index, dir){
+  const ni=index+dir;
+  if(ni<0||ni>=_newPhotoQueue.length) return;
+  [_newPhotoQueue[index], _newPhotoQueue[ni]]=[_newPhotoQueue[ni], _newPhotoQueue[index]];
+  renderNewPhotoPreview();
+}
+function removeNewPhoto(index){
+  _newPhotoQueue.splice(index,1);
+  renderNewPhotoPreview();
+}
+window.previewNewPhotos=previewNewPhotos;
+window.moveNewPhoto=moveNewPhoto;
+window.removeNewPhoto=removeNewPhoto;
+
 function resizeImageToDataURL(file,maxWidth=1200,quality=0.85){
   return new Promise((resolve,reject)=>{
     const reader=new FileReader();reader.onerror=reject;
@@ -2261,12 +2417,23 @@ async function addProperty(){
   const deposit=parseFloat(gv('af-deposit'))||0,keyMoney=parseFloat(gv('af-key'))||0;
   const type=gv('af-type')||'マンション',structure=gv('af-structure')||'RC',age=parseInt(gv('af-age'))||0;
   const desc=gv('af-desc').trim();
-  const photoFiles=document.getElementById('af-photo').files;
-  const newPhotoDataURLs=[];
-  for(const file of photoFiles){
-    try{newPhotoDataURLs.push(await resizeImageToDataURL(file,1200,0.85));}
-    catch(e){newPhotoDataURLs.push(await readFileAsDataURL(file));}
-  }
+  // 詳細情報（任意項目）
+  const access=gv('af-access').trim();
+  const details={
+    available:gv('af-available').trim(),
+    transaction:gv('af-transaction').trim(),
+    units:gv('af-units').trim(),
+    parking:gv('af-parking').trim(),
+    contract:gv('af-contract').trim(),
+    renewal:gv('af-renewal').trim(),
+    guarantor:gv('af-guarantor').trim(),
+    conditions:gv('af-conditions').trim(),
+    insurance:gv('af-insurance').trim(),
+    otherfees:gv('af-otherfees').trim(),
+    surroundings:gv('af-surroundings').trim()
+  };
+  // 並べ替え済みの写真キューを使用（順番はユーザー指定どおり）
+  const newPhotoDataURLs=_newPhotoQueue.map(p=>p.dataURL);
   // ★写真をS3にアップロードしてURL化（DynamoDBには重いbase64を入れない）
   let newPhotoURLs=[];
   if(newPhotoDataURLs.length){
@@ -2278,7 +2445,7 @@ async function addProperty(){
     if(propIdx<0){alert('編集対象が見つかりませんでした');resetEditMode();return;}
     const existing=PROPS[propIdx];
     const mergedPhotos=[...editingExistingPhotos,...newPhotoURLs];
-    const updated={...existing,name,area,address,station,walkMin,price:rent,mgmt,deposit,key:keyMoney,madori,size,type,structure,age,description:desc,photoURLs:mergedPhotos,
+    const updated={...existing,name,area,address,station,walkMin,price:rent,mgmt,deposit,key:keyMoney,madori,size,type,structure,age,description:desc,access,details,photoURLs:mergedPhotos,
       floorplanURL:window.editedFloorplanThumb||existing.floorplanURL||null,floorplanData:window.editedFloorplanData||existing.floorplanData||null};
     const addrChanged=(normalizeAddress(address)!==normalizeAddress(existing.address||')'))|| (normalizeAddress(area)!==normalizeAddress(existing.area||''));
     if(addrChanged){updated.lat=null;updated.lng=null;}
@@ -2295,7 +2462,7 @@ async function addProperty(){
   }
   // 「駅を自動取得」で取得済みの座標があれば流用
   const preCoords=window._afGeoCoords||null;
-  const newProp={id:nextPropId++,name,area,address,station,walkMin,price:rent,mgmt,deposit,key:keyMoney,madori,size,type,structure,age,features:[],tags:[],description:desc,
+  const newProp={id:nextPropId++,name,area,address,station,walkMin,price:rent,mgmt,deposit,key:keyMoney,madori,size,type,structure,age,features:[],tags:[],description:desc,access,details,
     ownerEmail:(currentUser&&currentUser.email)||null, ownerName:(currentUser&&currentUser.name)||null,
     photoURLs:newPhotoURLs,floorplanURL:window.editedFloorplanThumb||null,floorplanData:window.editedFloorplanData||null,
     lat:preCoords?preCoords.lat:null,lng:preCoords?preCoords.lng:null};
@@ -2316,8 +2483,12 @@ async function addProperty(){
 }
 
 function clearAddForm(){
-  ['af-name','af-area','af-rent','af-madori','af-size','af-station','af-walk-min','af-address','af-mgmt','af-deposit','af-key','af-age','af-desc'].forEach(id=>{const el=document.getElementById(id);if(el) el.value='';});
+  ['af-name','af-area','af-rent','af-madori','af-size','af-station','af-walk-min','af-address','af-mgmt','af-deposit','af-key','af-age','af-desc',
+   'af-access','af-available','af-units','af-parking','af-contract','af-renewal','af-guarantor','af-conditions','af-insurance','af-otherfees','af-surroundings'].forEach(id=>{const el=document.getElementById(id);if(el) el.value='';});
+  const afTrans=document.getElementById('af-transaction');if(afTrans) afTrans.selectedIndex=0;
   const photoInput=document.getElementById('af-photo');if(photoInput) photoInput.value='';
+  _newPhotoQueue=[]; if(typeof renderNewPhotoPreview==='function') renderNewPhotoPreview();
+  window._afStations=null;
   const afType=document.getElementById('af-type');if(afType) afType.selectedIndex=0;
   const afStr=document.getElementById('af-structure');if(afStr) afStr.selectedIndex=0;
   const geoStatus=document.getElementById('af-geo-status');if(geoStatus) geoStatus.style.display='none';

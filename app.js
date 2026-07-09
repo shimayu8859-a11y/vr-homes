@@ -2184,6 +2184,56 @@ function toggleAddForm(){
 
 function readFileAsDataURL(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.onerror=rej;r.readAsDataURL(file);});}
 
+/* ══════════════════════════════════════
+   写真を S3 にアップロード
+   base64データURL → S3保存 → 公開URLを返す
+   （DynamoDBには重いbase64ではなくURLだけ保存する）
+══════════════════════════════════════ */
+const S3_PUBLIC_BASE = 'https://my-sotuken-cs3b5-s3.s3.ap-northeast-3.amazonaws.com/';
+
+// dataURL(base64) を Blob に変換
+function dataURLtoBlob(dataURL){
+  const [head, base64]=dataURL.split(',');
+  const mime=(head.match(/data:([^;]+)/)||[])[1]||'image/jpeg';
+  const bin=atob(base64);
+  const arr=new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
+  return new Blob([arr],{type:mime});
+}
+
+// 1枚の写真(dataURL)をS3にアップロードし、公開URLを返す
+async function uploadPhotoToS3(dataURL){
+  if(!AWS_API_URL) return dataURL; // AWS未接続ならそのまま返す（フォールバック）
+  // すでにhttp(S3 URL)ならそのまま返す（編集時に既存写真を再アップしない）
+  if(/^https?:\/\//.test(dataURL)) return dataURL;
+  try{
+    const blob=dataURLtoBlob(dataURL);
+    const ext=(blob.type.split('/')[1]||'jpg').replace('jpeg','jpg');
+    const filename='photos/'+Date.now()+'_'+Math.random().toString(36).slice(2,8)+'.'+ext;
+    // ① 署名付きアップロードURLを取得
+    const signRes=await fetch(AWS_API_URL+'?action=upload&filename='+encodeURIComponent(filename));
+    if(!signRes.ok) throw new Error('署名URL取得失敗');
+    const {url}=await signRes.json();
+    // ② S3へPUTアップロード
+    const putRes=await fetch(url,{method:'PUT',body:blob,headers:{'Content-Type':blob.type}});
+    if(!putRes.ok) throw new Error('S3アップロード失敗 '+putRes.status);
+    // ③ 公開URLを返す
+    return S3_PUBLIC_BASE+filename;
+  }catch(e){
+    console.warn('写真S3アップロード失敗、base64のまま使用:',e.message);
+    return dataURL; // 失敗時はbase64のまま（動作は継続）
+  }
+}
+
+// 複数写真をまとめてS3アップロード
+async function uploadPhotosToS3(dataURLs){
+  const results=[];
+  for(const d of dataURLs){
+    results.push(await uploadPhotoToS3(d));
+  }
+  return results;
+}
+
 function resizeImageToDataURL(file,maxWidth=1200,quality=0.85){
   return new Promise((resolve,reject)=>{
     const reader=new FileReader();reader.onerror=reject;
@@ -2212,10 +2262,16 @@ async function addProperty(){
   const type=gv('af-type')||'マンション',structure=gv('af-structure')||'RC',age=parseInt(gv('af-age'))||0;
   const desc=gv('af-desc').trim();
   const photoFiles=document.getElementById('af-photo').files;
-  const newPhotoURLs=[];
+  const newPhotoDataURLs=[];
   for(const file of photoFiles){
-    try{newPhotoURLs.push(await resizeImageToDataURL(file,1200,0.85));}
-    catch(e){newPhotoURLs.push(await readFileAsDataURL(file));}
+    try{newPhotoDataURLs.push(await resizeImageToDataURL(file,1200,0.85));}
+    catch(e){newPhotoDataURLs.push(await readFileAsDataURL(file));}
+  }
+  // ★写真をS3にアップロードしてURL化（DynamoDBには重いbase64を入れない）
+  let newPhotoURLs=[];
+  if(newPhotoDataURLs.length){
+    showToast('写真をアップロード中...','info',3000);
+    newPhotoURLs=await uploadPhotosToS3(newPhotoDataURLs);
   }
   if(editingPropId!=null){
     const propIdx=PROPS.findIndex(p=>p.id===editingPropId);

@@ -73,6 +73,43 @@ let filterState = {
   priceMax:null, sizeMin:null, walkMax:null, searchText:'',
 };
 
+/* 地方名 → 含まれる都道府県のマッピング（キーワード検索用） */
+const REGION_MAP = {
+  '北海道':['北海道'],
+  '東北':['青森','岩手','宮城','秋田','山形','福島'],
+  '関東':['東京','神奈川','埼玉','千葉','茨城','栃木','群馬'],
+  '首都圏':['東京','神奈川','埼玉','千葉'],
+  '中部':['新潟','富山','石川','福井','山梨','長野','岐阜','静岡','愛知'],
+  '甲信越':['山梨','長野','新潟'],
+  '北陸':['富山','石川','福井','新潟'],
+  '東海':['愛知','岐阜','三重','静岡'],
+  '近畿':['大阪','京都','兵庫','奈良','和歌山','滋賀','三重'],
+  '関西':['大阪','京都','兵庫','奈良','和歌山','滋賀'],
+  '中国':['鳥取','島根','岡山','広島','山口'],
+  '山陰':['鳥取','島根'],
+  '山陽':['岡山','広島','山口'],
+  '四国':['徳島','香川','愛媛','高知'],
+  '九州':['福岡','佐賀','長崎','熊本','大分','宮崎','鹿児島'],
+  '九州・沖縄':['福岡','佐賀','長崎','熊本','大分','宮崎','鹿児島','沖縄'],
+  '沖縄':['沖縄'],
+};
+
+/* 検索キーワードが地方名なら、含まれる都道府県のいずれかにマッチするか判定 */
+function matchesRegionOrText(prop, keyword){
+  const hay=(prop.name+prop.area+prop.station+prop.address+prop.description).toLowerCase();
+  const kw=keyword.toLowerCase();
+  // 通常の文字列一致
+  if(hay.includes(kw)) return true;
+  // 地方名マッチ：「地方」「地区」などの語を除いて判定
+  const normalized=keyword.replace(/地方|地区|エリア/g,'').trim();
+  for(const region in REGION_MAP){
+    if(region.toLowerCase()===kw || region===normalized || region.replace(/・/g,'')===normalized){
+      return REGION_MAP[region].some(pref=>hay.includes(pref.toLowerCase()));
+    }
+  }
+  return false;
+}
+
 /* ══════════════════════════════════════
    ENTER KEY NAVIGATION
 ══════════════════════════════════════ */
@@ -108,7 +145,19 @@ function buildAdvFilterHTML() {
   const types = fieldDefs.types;
   const features = fieldDefs.features;
   const madoriList = fieldDefs.madori;
+  const regions = ['北海道','東北','関東','中部','近畿','中国','四国','九州','沖縄'];
   return `
+    <div class="filter-sec">
+      <div class="filter-sec-title"><i class="ti ti-map-2" style="font-size:12px"></i> 地方・キーワードから探す</div>
+      <div class="filter-range-row" style="margin-bottom:6px">
+        <input class="finput" type="text" id="f-adv-keyword" placeholder="地名・駅名・地方名など" style="font-size:12px"
+          onkeydown="if(event.key==='Enter')applyKeyword()">
+        <button class="btn btn-sm" style="font-size:11px;padding:5px 10px;flex-shrink:0" onclick="applyKeyword()"><i class="ti ti-search"></i></button>
+      </div>
+      <div class="filter-tag-wrap">
+        ${regions.map(r=>`<span class="ftag" onclick="searchByRegion('${r}',this)">${r}</span>`).join('')}
+      </div>
+    </div>
     <div class="filter-sec">
       <div class="filter-sec-title"><i class="ti ti-cash" style="font-size:12px"></i> 価格・費用</div>
       <div class="filter-range-row">
@@ -367,8 +416,9 @@ function cacheUserLocal(user){
   if(!user||!user.email) return;
   let cache={};
   try{ cache=JSON.parse(localStorage.getItem(USER_CACHE_KEY)||'{}'); }catch(e){}
+  // セキュリティ：パスワードはローカルに保存しない（認証はサーバー側で実施）
   cache[user.email]={
-    name:user.name, email:user.email, password:user.password,
+    name:user.name, email:user.email,
     role:user.role, active:user.active, photoURL:user.photoURL||null,
     wishlist:user.wishlist||{}, favs:user.favs||[], history:user.history||[],
     _updated:Date.now()
@@ -388,18 +438,17 @@ function mergeUserCache(){
     if(cu.email===MASTER_EMAIL) return; // マスターは固定
     const existing=userStore.find(u=>u.email===cu.email);
     if(existing){
-      // AWSより新しいローカル値で上書き（ユーザー個人データ）
+      // AWSより新しいローカル値で上書き（ユーザー個人データのみ・パスワードは扱わない）
       existing.favs=cu.favs||existing.favs||[];
       existing.history=cu.history||existing.history||[];
       existing.role=cu.role||existing.role;
       existing.active=(cu.active!==undefined)?cu.active:existing.active;
       existing.photoURL=cu.photoURL||existing.photoURL;
       existing.wishlist=cu.wishlist||existing.wishlist||{};
-      if(cu.password) existing.password=cu.password;
     } else {
-      // AWSにないユーザーはキャッシュから復元
+      // AWSにないユーザーはキャッシュから復元（パスワードなし＝サーバー認証専用）
       userStore.push({
-        name:cu.name, email:cu.email, password:cu.password,
+        name:cu.name, email:cu.email,
         role:cu.role||'user', active:cu.active!==false, photoURL:cu.photoURL||null,
         wishlist:cu.wishlist||{}, favs:cu.favs||[], history:cu.history||[]
       });
@@ -703,11 +752,53 @@ function toggleGateEye(){
   btn.innerHTML=inp.type==='text'?'<i class="ti ti-eye-off"></i>':'<i class="ti ti-eye"></i>';
 }
 
-function gateLogin(){
+async function gateLogin(){
   const email=(document.getElementById('g-email')||{}).value?.trim()||'';
   const pass=(document.getElementById('g-pass')||{}).value||'';
   if(!email||!pass){showGateMsg('メールアドレスとパスワードを入力してください',true);return;}
-  const user=userStore.find(u=>u.email===email&&u.password===pass);
+
+  // ① デモアカウント・マスターはローカルで先に照合（users.jsonに無いため）
+  const localSpecial=[DEMO_USER, DEMO_ADMIN, MASTER_USER].find(u=>u.email===email&&u.password===pass);
+  if(localSpecial){
+    if(!localSpecial.active){showGateMsg('このアカウントは停止されています',true);return;}
+    try{ localStorage.setItem('vr_session_email', localSpecial.email); }catch(e){}
+    _enterApp(localSpecial);
+    return;
+  }
+
+  // ② AWS サーバー側で認証（パスワードはハッシュ照合）
+  if(AWS_API_URL){
+    try{
+      const res=await fetch(AWS_API_URL+'?action=login',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({email,password:pass})
+      });
+      if(res.ok){
+        const data=await res.json();
+        if(data&&data.success&&data.user){
+          const user=data.user;
+          const idx=userStore.findIndex(u=>u.email===user.email);
+          if(idx>=0) userStore[idx]={...userStore[idx],...user};
+          else userStore.push(user);
+          cacheUserLocal(user);
+          try{ localStorage.setItem('vr_session_email', user.email); }catch(e){}
+          _enterApp(user);
+          return;
+        }
+      } else {
+        const d=await res.json().catch(()=>({}));
+        if(res.status===401||res.status===403){
+          showGateMsg(d.error||'メールアドレスまたはパスワードが違います',true);
+          return;
+        }
+      }
+    }catch(e){
+      console.warn('サーバー認証に接続できません。ローカル照合にフォールバック:',e.message);
+    }
+  }
+
+  // ③ フォールバック：ローカル照合（オフライン時のみ）
+  const user=userStore.find(u=>u.email===email&&(u.password===pass));
   if(!user){showGateMsg('メールアドレスまたはパスワードが違います',true);return;}
   if(!user.active){showGateMsg('このアカウントは停止されています',true);return;}
   try{ localStorage.setItem('vr_session_email', user.email); }catch(e){}
@@ -767,55 +858,49 @@ function gateRegister(){
   setTimeout(()=>switchGateAuth('login'),1200);
 }
 
-/* パスワード再設定：ステップ1（メール＋新パスワード入力→6桁コード送信） */
-let _resetPending = null; // {email, newPass, code, expires}
+/* パスワード再設定：ステップ1（メール入力→サーバーが6桁コードを生成・送信） */
+let _resetPending = null; // {email, newPass}
 
 async function gateResetPassword(){
   const email=(document.getElementById('rst-email')||{}).value?.trim()||'';
   const pass=(document.getElementById('rst-pass')||{}).value||'';
   const pass2=(document.getElementById('rst-pass2')||{}).value||'';
   if(!email){showGateMsg('メールアドレスを入力してください',true);return;}
-  const user=userStore.find(u=>u.email===email);
-  if(!user){showGateMsg('そのメールアドレスは登録されていません',true);return;}
-  if(user.email===MASTER_EMAIL){showGateMsg('このアカウントは変更できません',true);return;}
+  if(email===MASTER_EMAIL){showGateMsg('このアカウントは変更できません',true);return;}
   if(pass.length<6){showGateMsg('パスワードは6文字以上で入力してください',true);return;}
   if(pass!==pass2){showGateMsg('パスワードが一致しません',true);return;}
 
-  // 6桁コード生成
-  const code=String(Math.floor(100000+Math.random()*900000));
-  _resetPending={email,newPass:pass,code,expires:Date.now()+10*60*1000};
+  if(!AWS_API_URL){showGateMsg('現在パスワード再設定はご利用いただけません',true);return;}
 
   showGateMsg('確認コードを送信中...',false);
-  // AWS経由でメール送信を試みる
-  let mailSent=false;
-  if(AWS_API_URL){
-    try{
-      const res=await fetch(AWS_API_URL+'?action=sendResetCode',{
-        method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({email,code})
-      });
-      if(res.ok){ const d=await res.json().catch(()=>({})); if(d&&d.success) mailSent=true; }
-    }catch(e){ console.warn('メール送信失敗:',e.message); }
+  try{
+    // サーバー側でコード生成＋メール送信（コードはサーバーが保持、フロントには渡さない）
+    const res=await fetch(AWS_API_URL+'?action=requestResetCode',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({email})
+    });
+    const d=await res.json().catch(()=>({}));
+    if(!res.ok){ showGateMsg(d.error||'コードの送信に失敗しました',true); return; }
+    if(!d.success){ showGateMsg('メールの送信に失敗しました。メールアドレスをご確認ください',true); return; }
+    // 新パスワードを一時保持（コード検証成功後に確定）
+    _resetPending={email, newPass:pass};
+    switchGateAuthToVerify(email);
+  }catch(e){
+    showGateMsg('通信エラーが発生しました。もう一度お試しください',true);
   }
-  // ステップ2の画面へ
-  switchGateAuthToVerify(email, mailSent, code);
 }
 
-/* コード入力画面を表示 */
-function switchGateAuthToVerify(email, mailSent, code){
+/* コード入力画面を表示（コードはサーバーが保持しているので画面には出さない） */
+function switchGateAuthToVerify(email){
   const form=document.getElementById('gate-form');
   const hint=document.getElementById('gate-switch-hint');
   const msg=document.getElementById('gate-msg');if(msg) msg.style.display='none';
   const tl=document.getElementById('gatab-login');if(tl) tl.classList.remove('on');
   const tr=document.getElementById('gatab-reg');if(tr) tr.classList.remove('on');
-  // メール未送信（Lambda未対応）の場合はデモ用にコードを画面表示
-  const devHint = mailSent
-    ? `<div style="font-size:12px;color:rgba(255,255,255,.6);margin-bottom:16px;line-height:1.7"><strong style="color:#93c5fd">${email}</strong> に6桁の確認コードを送信しました。メールをご確認ください。</div>`
-    : `<div style="font-size:12px;color:#fbbf24;margin-bottom:8px;line-height:1.7;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);border-radius:8px;padding:10px 12px">
-         <i class="ti ti-alert-triangle"></i> メール送信は現在ご利用いただけません（デモモード）。<br>確認コード：<strong style="font-size:18px;letter-spacing:.15em;color:#fff">${code}</strong>
-       </div>`;
   form.innerHTML=`
-    ${devHint}
+    <div style="font-size:12px;color:rgba(255,255,255,.6);margin-bottom:16px;line-height:1.7">
+      <strong style="color:#93c5fd">${email}</strong> に6桁の確認コードを送信しました。メールをご確認のうえ、コードを入力してください。
+    </div>
     <div class="lfield"><label>確認コード（6桁）</label>
       <input class="linput" id="rst-code" type="text" inputmode="numeric" maxlength="6"
         placeholder="000000" autocomplete="one-time-code"
@@ -830,24 +915,31 @@ function switchGateAuthToVerify(email, mailSent, code){
   setTimeout(()=>{const c=document.getElementById('rst-code');if(c) c.focus();},100);
 }
 
-/* ステップ2：コード検証→パスワード確定 */
-function gateVerifyCode(){
+/* ステップ2：サーバーでコード検証＋パスワード更新（ハッシュ化） */
+async function gateVerifyCode(){
   const input=(document.getElementById('rst-code')||{}).value?.trim()||'';
   if(!_resetPending){showGateMsg('セッションが切れました。最初からやり直してください',true);return;}
-  if(Date.now()>_resetPending.expires){showGateMsg('コードの有効期限が切れました。やり直してください',true);_resetPending=null;return;}
-  if(input!==_resetPending.code){showGateMsg('確認コードが正しくありません',true);return;}
-  // 確定
-  const user=userStore.find(u=>u.email===_resetPending.email);
-  if(!user){showGateMsg('ユーザーが見つかりません',true);return;}
-  user.password=_resetPending.newPass;
-  saveUserToAWS(user);
-  const email=_resetPending.email;
-  _resetPending=null;
-  showGateMsg('✓ パスワードを再設定しました。ログインしてください',false);
-  setTimeout(()=>{
-    switchGateAuth('login');
-    const em=document.getElementById('g-email');if(em) em.value=email;
-  },1400);
+  if(!input){showGateMsg('確認コードを入力してください',true);return;}
+  showGateMsg('認証中...',false);
+  try{
+    const res=await fetch(AWS_API_URL+'?action=confirmReset',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({email:_resetPending.email, code:input, newPassword:_resetPending.newPass})
+    });
+    const d=await res.json().catch(()=>({}));
+    if(!res.ok){ showGateMsg(d.error||'確認コードが正しくありません',true); return; }
+    if(!d.success){ showGateMsg('再設定に失敗しました。もう一度お試しください',true); return; }
+    const email=_resetPending.email;
+    _resetPending=null;
+    // ローカルキャッシュのパスワードは削除（サーバーがハッシュ管理するため）
+    showGateMsg('✓ パスワードを再設定しました。ログインしてください',false);
+    setTimeout(()=>{
+      switchGateAuth('login');
+      const em=document.getElementById('g-email');if(em) em.value=email;
+    },1400);
+  }catch(e){
+    showGateMsg('通信エラーが発生しました',true);
+  }
 }
 
 function doLogout(){
@@ -1450,6 +1542,41 @@ function applyFilters(){
   renderCards();updateResultsCount();renderMapSidebar();updateMapMarkerVisibility();
 }
 
+/* 詳細フィルターのキーワード欄で検索 */
+function applyKeyword(){
+  const kw=document.getElementById('f-adv-keyword');
+  const val=kw?kw.value.trim():'';
+  filterState.searchText=val;
+  // TOP検索バー・マップにも反映
+  const st=document.getElementById('f-search-text');if(st) st.value=val;
+  syncSearchToMap();
+  renderCards();updateResultsCount();renderMapSidebar();updateMapMarkerVisibility();
+  if(val){
+    const n=getFilteredProps().length;
+    showToast(`「${val}」で${n}件見つかりました`, n>0?'success':'warn');
+  }
+}
+
+/* 地方ボタンで検索 */
+function searchByRegion(region, el){
+  // トグル：既に選択中なら解除
+  const already = el && el.classList.contains('on');
+  document.querySelectorAll('.ftag.region-on').forEach(t=>t.classList.remove('on','region-on'));
+  if(already){
+    filterState.searchText='';
+  } else {
+    if(el){ el.classList.add('on','region-on'); }
+    filterState.searchText=region;
+  }
+  const kw=document.getElementById('f-adv-keyword');if(kw) kw.value=filterState.searchText;
+  const st=document.getElementById('f-search-text');if(st) st.value=filterState.searchText;
+  syncSearchToMap();
+  renderCards();updateResultsCount();renderMapSidebar();updateMapMarkerVisibility();
+  const n=getFilteredProps().length;
+  showToast(already?'地方の絞り込みを解除しました':`${region}地方で${n}件見つかりました`, n>0||already?'info':'warn');
+}
+
+
 function applyMapMadoriText(){
   const inp = document.getElementById('f-map-madori-text');
   if (!inp || !inp.value.trim()) return;
@@ -1486,8 +1613,8 @@ function applyMapFilters(){
 
 function resetFilters(){
   filterState={madori:new Set(),types:new Set(),features:new Set(),priceMax:null,sizeMin:null,walkMax:null,searchText:''};
-  document.querySelectorAll('.ftag').forEach(el=>el.classList.remove('on'));
-  ['f-search-text','f-search-price','f-adv-price','f-adv-size','f-adv-walk','f-map-price','f-map-size','f-map-walk','map-addr-input'].forEach(id=>{const el=document.getElementById(id);if(el) el.value='';});
+  document.querySelectorAll('.ftag').forEach(el=>el.classList.remove('on','region-on'));
+  ['f-search-text','f-search-price','f-adv-price','f-adv-size','f-adv-walk','f-map-price','f-map-size','f-map-walk','map-addr-input','f-adv-keyword'].forEach(id=>{const el=document.getElementById(id);if(el) el.value='';});
   renderCards();updateResultsCount();renderMapSidebar();
   if(leafletMap) PROPS.forEach(p=>{const m=mapMarkers[p.id];if(m&&!leafletMap.hasLayer(m)) m.addTo(leafletMap);});
 }
@@ -1499,9 +1626,9 @@ function toggleAdvFilter(){
 }
 
 function getFilteredProps(){
-  const txt=filterState.searchText.toLowerCase();
+  const txt=filterState.searchText.trim();
   return PROPS.filter(p=>{
-    if(txt){const hay=(p.name+p.area+p.station+p.address+p.description).toLowerCase();if(!hay.includes(txt)) return false;}
+    if(txt){ if(!matchesRegionOrText(p, txt)) return false; }
     if(filterState.priceMax!=null&&p.price>filterState.priceMax) return false;
     if(filterState.sizeMin!=null&&p.size<filterState.sizeMin) return false;
     if(filterState.walkMax!=null&&(p.walkMin||999)>filterState.walkMax) return false;
@@ -1710,6 +1837,27 @@ function updateInboxBadge(){
   const badge=document.getElementById('mp-inbox-badge');
   if(badge){ badge.textContent=n; badge.style.display=n>0?'inline-block':'none'; }
 }
+
+/* ══════════════════════════════════════
+   VRシステム ダウンロード
+   ※ VR_SYSTEM_URL に実際のダウンロードURLを設定してください
+     （GitHub Release / Google Drive / S3 など）
+══════════════════════════════════════ */
+const VR_SYSTEM_URL = ''; // 例: 'https://github.com/shimayu8859-a11y/vr-homes/releases/download/v1.0/FloorPlayVR6.zip'
+
+function handleVRDownload(event){
+  if(!VR_SYSTEM_URL){
+    event.preventDefault();
+    showToast('VRシステムは現在準備中です。もうしばらくお待ちください', 'info', 4000);
+    return false;
+  }
+  // URL設定済みならそのままダウンロード
+  const link=document.getElementById('vr-download-link');
+  if(link) link.href=VR_SYSTEM_URL;
+  showToast('ダウンロードを開始します', 'success');
+  return true;
+}
+window.handleVRDownload=handleVRDownload;
 
 function showToast(message,type='info',duration=3500){
   let host=document.getElementById('toast-container');

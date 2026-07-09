@@ -375,6 +375,7 @@ async function _runMapSearch(val){
   } else {
     showToast('住所が見つかりませんでした', 'warn');
   }
+  currentPage=1;
   renderCards(); updateResultsCount(); renderMapSidebar(); updateMapMarkerVisibility();
 }
 async function searchMapAddress() {
@@ -1530,7 +1531,7 @@ function toggleFtag(el,key,value){
     if(isOn) filterState[key].add(value);
     else filterState[key].delete(value);
   }
-  renderCards();updateResultsCount();renderMapSidebar();updateMapMarkerVisibility();
+  currentPage=1;renderCards();updateResultsCount();renderMapSidebar();updateMapMarkerVisibility();
 }
 
 function applyFilters(){
@@ -1539,7 +1540,7 @@ function applyFilters(){
   if(pv) filterState.priceMax=parseInt(pv)*10000;
   const sv=document.getElementById('f-adv-size')?.value;if(sv) filterState.sizeMin=parseInt(sv);
   const wv=document.getElementById('f-adv-walk')?.value;if(wv) filterState.walkMax=parseInt(wv);
-  renderCards();updateResultsCount();renderMapSidebar();updateMapMarkerVisibility();
+  currentPage=1;renderCards();updateResultsCount();renderMapSidebar();updateMapMarkerVisibility();
 }
 
 /* 詳細フィルターのキーワード欄で検索 */
@@ -1550,7 +1551,7 @@ function applyKeyword(){
   // TOP検索バー・マップにも反映
   const st=document.getElementById('f-search-text');if(st) st.value=val;
   syncSearchToMap();
-  renderCards();updateResultsCount();renderMapSidebar();updateMapMarkerVisibility();
+  currentPage=1;renderCards();updateResultsCount();renderMapSidebar();updateMapMarkerVisibility();
   if(val){
     const n=getFilteredProps().length;
     showToast(`「${val}」で${n}件見つかりました`, n>0?'success':'warn');
@@ -1571,7 +1572,7 @@ function searchByRegion(region, el){
   const kw=document.getElementById('f-adv-keyword');if(kw) kw.value=filterState.searchText;
   const st=document.getElementById('f-search-text');if(st) st.value=filterState.searchText;
   syncSearchToMap();
-  renderCards();updateResultsCount();renderMapSidebar();updateMapMarkerVisibility();
+  currentPage=1;renderCards();updateResultsCount();renderMapSidebar();updateMapMarkerVisibility();
   const n=getFilteredProps().length;
   showToast(already?'地方の絞り込みを解除しました':`${region}地方で${n}件見つかりました`, n>0||already?'info':'warn');
 }
@@ -1593,7 +1594,7 @@ function applyMapMadoriText(){
     tag.onclick = () => { filterState.madori.delete(val); tag.remove(); renderCards();updateResultsCount();renderMapSidebar();updateMapMarkerVisibility(); };
     wrap.appendChild(tag);
   }
-  renderCards();updateResultsCount();renderMapSidebar();updateMapMarkerVisibility();
+  currentPage=1;renderCards();updateResultsCount();renderMapSidebar();updateMapMarkerVisibility();
   showToast(`間取り「${val}」で絞り込みました`, 'info');
 }
 
@@ -1608,13 +1609,14 @@ function applyMapFilters(){
   const pv=document.getElementById('f-map-price')?.value;if(pv) filterState.priceMax=parseInt(pv)*10000;
   const sv=document.getElementById('f-map-size')?.value;if(sv) filterState.sizeMin=parseInt(sv);
   const wv=document.getElementById('f-map-walk')?.value;if(wv) filterState.walkMax=parseInt(wv);
-  renderCards();updateResultsCount();renderMapSidebar();updateMapMarkerVisibility();
+  currentPage=1;renderCards();updateResultsCount();renderMapSidebar();updateMapMarkerVisibility();
 }
 
 function resetFilters(){
   filterState={madori:new Set(),types:new Set(),features:new Set(),priceMax:null,sizeMin:null,walkMax:null,searchText:''};
   document.querySelectorAll('.ftag').forEach(el=>el.classList.remove('on','region-on'));
   ['f-search-text','f-search-price','f-adv-price','f-adv-size','f-adv-walk','f-map-price','f-map-size','f-map-walk','map-addr-input','f-adv-keyword'].forEach(id=>{const el=document.getElementById(id);if(el) el.value='';});
+  currentPage=1;
   renderCards();updateResultsCount();renderMapSidebar();
   if(leafletMap) PROPS.forEach(p=>{const m=mapMarkers[p.id];if(m&&!leafletMap.hasLayer(m)) m.addTo(leafletMap);});
 }
@@ -1884,6 +1886,9 @@ function showDataSourceBadge(source){
 /* ══════════════════════════════════════
    CARDS
 ══════════════════════════════════════ */
+let currentPage = 1;
+const PROPS_PER_PAGE = 12; // 1ページあたりの物件数
+
 function renderCards(){
   const grid=document.getElementById('card-grid');
   const filtered=getFilteredProps();
@@ -1891,9 +1896,17 @@ function renderCards(){
     grid.innerHTML=`<div style="grid-column:1/-1;padding:48px 0;text-align:center;color:#94a3b8">
       <i class="ti ti-building-off" style="font-size:40px;display:block;margin-bottom:14px;opacity:.4"></i>
       <div style="font-size:14px;font-weight:600;margin-bottom:4px">${PROPS.length===0?'物件が登録されていません':'条件に合う物件が見つかりません'}</div>
-    </div>`;return;
+    </div>`;
+    const pager=document.getElementById('pagination');if(pager) pager.innerHTML='';
+    return;
   }
-  grid.innerHTML=filtered.map(p=>{
+  // ページ範囲を計算
+  const totalPages=Math.ceil(filtered.length/PROPS_PER_PAGE);
+  if(currentPage>totalPages) currentPage=totalPages;
+  if(currentPage<1) currentPage=1;
+  const start=(currentPage-1)*PROPS_PER_PAGE;
+  const pageProps=filtered.slice(start, start+PROPS_PER_PAGE);
+  grid.innerHTML=pageProps.map(p=>{
     const isFav=favs.has(p.id);
     const photos=p.photoURLs||[];
     const photoStyle=photos[0]?`background-image:url(${photos[0]});background-size:cover;background-position:center;`:'';
@@ -1924,7 +1937,59 @@ function renderCards(){
   }).join('');
   // インライン広告を挿入
   setTimeout(injectInlineAds, 50);
+  // ページネーションUIを描画
+  renderPagination(filtered.length, totalPages);
 }
+
+/* ページネーションUI */
+function renderPagination(totalItems, totalPages){
+  let pager=document.getElementById('pagination');
+  if(!pager){
+    pager=document.createElement('div');
+    pager.id='pagination';
+    pager.style.cssText='display:flex;justify-content:center;align-items:center;gap:6px;flex-wrap:wrap;padding:24px 12px 8px';
+    const grid=document.getElementById('card-grid');
+    if(grid&&grid.parentNode) grid.parentNode.insertBefore(pager, grid.nextSibling);
+  }
+  if(totalPages<=1){ pager.innerHTML=''; return; }
+  const btn=(label, page, opts={})=>{
+    const {disabled=false, active=false}=opts;
+    return `<button ${disabled?'disabled':''} onclick="goToPage(${page})"
+      style="min-width:38px;height:38px;padding:0 10px;border-radius:9px;font-size:13px;font-weight:700;cursor:${disabled?'default':'pointer'};
+      border:1px solid ${active?'var(--blue)':'var(--border)'};
+      background:${active?'var(--blue)':'var(--surface)'};
+      color:${active?'#fff':disabled?'#cbd5e1':'var(--navy)'};
+      font-family:inherit;transition:all .15s">${label}</button>`;
+  };
+  // 表示するページ番号の範囲（現在ページの前後2つ）
+  let pages=[];
+  const range=2;
+  for(let i=1;i<=totalPages;i++){
+    if(i===1||i===totalPages||(i>=currentPage-range&&i<=currentPage+range)) pages.push(i);
+    else if(pages[pages.length-1]!=='...') pages.push('...');
+  }
+  let html='';
+  html+=btn('<i class="ti ti-chevron-left"></i>', currentPage-1, {disabled:currentPage===1});
+  pages.forEach(p=>{
+    if(p==='...') html+=`<span style="padding:0 4px;color:#94a3b8">…</span>`;
+    else html+=btn(p, p, {active:p===currentPage});
+  });
+  html+=btn('<i class="ti ti-chevron-right"></i>', currentPage+1, {disabled:currentPage===totalPages});
+  // 件数表示
+  const startN=(currentPage-1)*PROPS_PER_PAGE+1;
+  const endN=Math.min(currentPage*PROPS_PER_PAGE, totalItems);
+  html+=`<div style="width:100%;text-align:center;font-size:12px;color:#94a3b8;margin-top:10px">全${totalItems}件中 ${startN}〜${endN}件を表示</div>`;
+  pager.innerHTML=html;
+}
+
+function goToPage(page){
+  currentPage=page;
+  renderCards();
+  // カードグリッドの先頭へスクロール
+  const grid=document.getElementById('card-grid');
+  if(grid) grid.scrollIntoView({behavior:'smooth', block:'start'});
+}
+window.goToPage=goToPage;
 
 function updateResultsCount(){
   const el=document.getElementById('results-count');
@@ -2368,6 +2433,12 @@ function makeAdBanner(ad) {
 
 /* ── TOP下部 広告エリア（写真実サイズ・縦並び） ── */
 function injectSideAds() {
+  // 広告が解放されていなければ、既存の広告ブロックも消して何もしない
+  if (!isAdUnlocked()) {
+    const existing = document.getElementById('top-bottom-ads');
+    if (existing) existing.remove();
+    return;
+  }
   // 左右サイドバーは廃止。代わりに lp-footer の直前に広告ブロックを挿入
   let el = document.getElementById('top-bottom-ads');
   if (!el) {
@@ -2403,8 +2474,10 @@ function injectSideAds() {
 function injectInlineAds() {
   const grid = document.getElementById('card-grid');
   if (!grid) return;
-  // 既存のインライン広告を削除
+  // 既存のインライン広告を必ず削除
   grid.querySelectorAll('.inline-ad-row').forEach(el=>el.remove());
+  // 広告が解放されていなければ挿入しない（デフォルトは完全非表示）
+  if (!isAdUnlocked()) return;
   const cards = [...grid.children];
   // 4枚おきに広告を挿入
   const insertPositions = [4, 9];

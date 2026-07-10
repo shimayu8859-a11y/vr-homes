@@ -1317,9 +1317,9 @@ function initLeafletMap(){
   if(leafletMap){leafletMap.invalidateSize();renderMapSidebar();return;}
   const el=document.getElementById('leaf-map');if(!el) return;
   if(typeof L==='undefined'){el.innerHTML='<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#666;font-size:13px">地図ライブラリを読み込めませんでした</div>';return;}
-  leafletMap=L.map('leaf-map',{preferCanvas:true}).setView([35.6762,139.6503],12);
-  const osmJp=L.tileLayer('https://tile.openstreetmap.jp/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap contributors',maxZoom:18});
-  const carto=L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{attribution:'&copy; OpenStreetMap &copy; CARTO',subdomains:'abcd',maxZoom:20});
+  leafletMap=L.map('leaf-map',{preferCanvas:true,fadeAnimation:false,markerZoomAnimation:false}).setView([35.6762,139.6503],12);
+  const osmJp=L.tileLayer('https://tile.openstreetmap.jp/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap contributors',maxZoom:18,updateWhenIdle:true,updateWhenZooming:false,keepBuffer:2});
+  const carto=L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{attribution:'&copy; OpenStreetMap &copy; CARTO',subdomains:'abcd',maxZoom:19,updateWhenIdle:true,updateWhenZooming:false,keepBuffer:2});
   let osmFailed=false;
   osmJp.on('tileerror',()=>{if(!osmFailed){osmFailed=true;leafletMap.removeLayer(osmJp);carto.addTo(leafletMap);}});
   osmJp.addTo(leafletMap);
@@ -1330,24 +1330,30 @@ function initLeafletMap(){
 function addMapMarker(prop){
   if(!leafletMap||!prop.lat||!prop.lng) return;
   if(mapMarkers[prop.id]) mapMarkers[prop.id].remove();
-  const photos=prop.photoURLs||[];
-  const photoHTML=photos[0]?`<img src="${photos[0]}" style="width:100%;height:60px;object-fit:cover;border-radius:6px;margin-bottom:6px">` :'';
-  const feats=(prop.features||[]).slice(0,3).map(t=>`<span style="background:#dbeafe;color:#1d4ed8;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:600">${t}</span>`).join(' ');
-  const marker=L.marker([prop.lat,prop.lng]).addTo(leafletMap)
-    .bindPopup(`<div style="min-width:210px;font-family:-apple-system,sans-serif;cursor:pointer" onclick="showPropDetail(${prop.id})">
-      ${photoHTML}
-      <div style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:3px">${prop.name}</div>
-      <div style="font-size:12px;color:#2563eb;font-weight:700;margin-bottom:3px">¥${Number(prop.price).toLocaleString()}/月</div>
-      <div style="font-size:11px;color:#64748b;margin-bottom:5px">${prop.madori} / ${prop.size}㎡ / ${prop.station||''}駅 徒歩${prop.walkMin||'?'}分</div>
-      <div style="display:flex;gap:3px;flex-wrap:wrap;margin-bottom:6px">${feats}</div>
-      <div style="font-size:11px;color:#2563eb;font-weight:600">クリックして詳細を見る →</div>
-    </div>`,{maxWidth:240});
+  const marker=L.marker([prop.lat,prop.lng]).addTo(leafletMap);
+  // ポップアップは開いた時に初めて中身を生成（遅延生成で軽量化）
+  marker.bindPopup(()=>buildMarkerPopup(prop),{maxWidth:240});
   // マーカークリックでその場所までズーム
   marker.on('click',()=>{
     leafletMap.flyTo([prop.lat,prop.lng],17,{duration:0.8});
     document.querySelectorAll('#map-results .result-item').forEach(el=>el.classList.toggle('on',el.dataset.propId===String(prop.id)));
   });
   mapMarkers[prop.id]=marker;
+}
+
+/* ポップアップHTMLを必要時に生成（写真も開いた時だけ遅延読み込み） */
+function buildMarkerPopup(prop){
+  const photos=prop.photoURLs||[];
+  const photoHTML=photos[0]?`<img src="${photos[0]}" loading="lazy" style="width:100%;height:60px;object-fit:cover;border-radius:6px;margin-bottom:6px">`:'';
+  const feats=(prop.features||[]).slice(0,3).map(t=>`<span style="background:#dbeafe;color:#1d4ed8;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:600">${t}</span>`).join(' ');
+  return `<div style="min-width:210px;font-family:-apple-system,sans-serif;cursor:pointer" onclick="showPropDetail(${prop.id})">
+      ${photoHTML}
+      <div style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:3px">${prop.name}</div>
+      <div style="font-size:12px;color:#2563eb;font-weight:700;margin-bottom:3px">¥${Number(prop.price).toLocaleString()}/月</div>
+      <div style="font-size:11px;color:#64748b;margin-bottom:5px">${prop.madori} / ${prop.size}㎡ / ${prop.station||''}駅 徒歩${prop.walkMin||'?'}分</div>
+      <div style="display:flex;gap:3px;flex-wrap:wrap;margin-bottom:6px">${feats}</div>
+      <div style="font-size:11px;color:#2563eb;font-weight:600">クリックして詳細を見る →</div>
+    </div>`;
 }
 
 function removeMapMarker(id){if(mapMarkers[id]){mapMarkers[id].remove();delete mapMarkers[id];}}

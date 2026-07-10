@@ -44,6 +44,13 @@ h1{font-size:15px;font-weight:600;padding:11px 16px;background:var(--surface);bo
 .doortype-btn{padding:5px 11px;border-radius:var(--radius-sm);border:1px solid #B9D4EE;background:var(--surface);color:var(--ink);cursor:pointer;font-size:12px;font-weight:500;white-space:nowrap;transition:all .13s}
 .doortype-btn:hover{border-color:var(--blue);background:#fff}
 .doortype-btn.active{background:var(--blue);color:#fff;border-color:var(--blue)}
+/* 頂点/壁入力中の「1つ戻す」ボタン */
+.undo-fab{display:none;position:absolute;top:12px;left:12px;z-index:15;
+  padding:7px 14px;border-radius:var(--radius);border:1px solid var(--line);
+  background:rgba(255,255,255,.96);color:var(--ink);font-size:12px;font-weight:600;
+  cursor:pointer;box-shadow:var(--shadow-md);transition:all .13s}
+.undo-fab:hover{background:#fff;border-color:var(--blue);color:var(--blue)}
+.undo-fab.show{display:block}
 .zoom-btn{width:28px;height:28px;border-radius:var(--radius-sm);border:1px solid var(--line);background:var(--surface);cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;color:var(--ink-soft);transition:all .13s}
 .zoom-btn:hover{background:var(--surface-2);color:var(--blue)}
 .zoom-label{font-size:11px;color:var(--ink-soft);min-width:36px;text-align:center}
@@ -177,6 +184,8 @@ canvas.map-canvas{display:block;position:absolute;top:0;left:0;width:100%;height
   <div class="left-panel">
     <div class="canvas-wrap" id="canvasWrap">
       <canvas class="map-canvas" id="c"></canvas>
+      <!-- 頂点/壁 入力中の「1つ戻す」フローティングボタン -->
+      <button class="undo-fab" id="undoFab" onclick="undoLastInput()" title="直前の入力を取り消し (Backspace / Ctrl+Z)">↶ 1つ戻す</button>
       <!-- 背景画像の移動・スケール用の floating バー -->
       <div class="bg-transform-bar" id="bgTransformBar">
         <span class="bt-hint">背景:</span>
@@ -992,11 +1001,25 @@ document.addEventListener('keydown',function(e){
     if(mode==='vertex' && vertices.length>0) draw();
   }
   if(e.key==='Enter'&&mode==='vertex'&&vertices.length>=3){confirmVertex();}
-  if(e.key==='Escape'&&mode==='vertex'){vertices=[];draw();document.getElementById('status').textContent='キャンセルしました';}
+  if(e.key==='Escape'&&mode==='vertex'){vertices=[];draw();updateUndoFab();document.getElementById('status').textContent='キャンセルしました';}
+  /* ━━━ 頂点入力中: Backspace / Ctrl+Z で直前の頂点を1つ取り消し ━━━ */
+  if(mode==='vertex' && vertices.length>0 &&
+     (e.key==='Backspace' || ((e.ctrlKey||e.metaKey) && (e.key==='z'||e.key==='Z')))){
+    e.preventDefault();
+    undoLastInput();
+    return;
+  }
+  /* ━━━ 壁モード: Backspace / Ctrl+Z で直前の壁 or 始点を取り消し ━━━ */
+  if(mode==='wall' &&
+     (e.key==='Backspace' || ((e.ctrlKey||e.metaKey) && (e.key==='z'||e.key==='Z')))){
+    e.preventDefault();
+    undoLastInput();
+    return;
+  }
   /* ━━━ 壁モード中の ESC で中断 ━━━ */
   if(e.key==='Escape'&&mode==='wall'&&wallStartPt){
     wallStartPt=null;
-    draw();
+    draw();updateUndoFab();
     document.getElementById('status').textContent='壁入力を中断しました';
   }
   /* ━━━ 囲みモード中の ESC でキャンセル ━━━ */
@@ -1084,6 +1107,7 @@ function setMode(m){
   if(m==='furniture')renderFurnitureGrid();
   /* サブツールバーの表示切り替えでキャンバス高さが変わるため再計算 */
   if(typeof resize2d==='function') setTimeout(resize2d, 0);
+  updateUndoFab();
 }
 function selectCat(cat,btn){
   currentCat=cat;
@@ -1125,6 +1149,52 @@ function confirmVertex(){
   rooms.push({id:roomCount++,name:names[rooms.length%names.length],wx:minX,wy:minY,ww:maxX-minX,wh:maxY-minY,vertices:vertices.map(function(v){return{x:v.x,y:v.y};}),color:COLORS[rooms.length%COLORS.length],openings:[],groupId:null});
   vertices=[];rebuild3D();renderRoomList();draw();
   document.getElementById('status').textContent='頂点入力で部屋を作成しました';
+  updateUndoFab();
+}
+
+/* ━━━ 直前の入力を1つ取り消す(頂点モード / 壁モード共通) ━━━ */
+function undoLastInput(){
+  if(mode==='vertex'){
+    if(vertices.length===0){
+      document.getElementById('status').textContent='戻せる頂点がありません';
+      return;
+    }
+    vertices.pop();
+    draw();
+    if(vertices.length===0){
+      document.getElementById('status').textContent='すべての頂点を取り消しました。クリックで最初から入力できます';
+    } else {
+      document.getElementById('status').textContent='頂点を1つ戻しました(残り '+vertices.length+'個)/ Enterで確定 / Escで全キャンセル';
+    }
+  } else if(mode==='wall'){
+    if(wallStartPt && walls.length>0){
+      var last=walls.pop();
+      wallStartPt={x:last.x1, y:last.y1};
+      draw();rebuild3D();renderRoomList();
+      document.getElementById('status').textContent='壁を1本戻しました(残り '+walls.length+'本)';
+    } else if(wallStartPt){
+      wallStartPt=null;
+      draw();
+      document.getElementById('status').textContent='始点を取り消しました';
+    } else if(walls.length>0){
+      walls.pop();
+      draw();rebuild3D();renderRoomList();
+      document.getElementById('status').textContent='壁を1本削除しました(残り '+walls.length+'本)';
+    } else {
+      document.getElementById('status').textContent='戻せる壁がありません';
+    }
+  }
+  updateUndoFab();
+}
+
+/* 「1つ戻す」ボタンの表示・非表示を更新 */
+function updateUndoFab(){
+  var fab=document.getElementById('undoFab');
+  if(!fab) return;
+  var show = (mode==='vertex' && vertices.length>0) ||
+             (mode==='wall' && (wallStartPt!==null || walls.length>0));
+  if(show) fab.classList.add('show');
+  else fab.classList.remove('show');
 }
 function snapToRooms(rx,ry,rw,rh){
   var snapDist=GRID*1.5;
@@ -1391,7 +1461,7 @@ canvas.addEventListener('mousedown',function(e){
     }
     vertices.push({x:nx, y:ny});
     document.getElementById('status').textContent='頂点 '+vertices.length+'個 (軸ロック '+(dx>=dy?'横':'縦')+') / Enterで確定 / Escでキャンセル';
-    draw();
+    draw();updateUndoFab();
     e.preventDefault();
     return;
   }
@@ -1483,7 +1553,7 @@ canvas.addEventListener('mousedown',function(e){
     /* 連続入力: 終点が次の始点に */
     wallStartPt={x:endX, y:endY};
     document.getElementById('status').textContent='壁 '+walls.length+'本 作成 / 次の終点をクリック / ESCで中断';
-    draw();rebuild3D();renderRoomList();
+    draw();rebuild3D();renderRoomList();updateUndoFab();
     return;
   }
   if(mode==='door'||mode==='window'||mode==='passage'){
@@ -1526,7 +1596,7 @@ canvas.addEventListener('mousedown',function(e){
     if(vertices.length>=3){var first=vertices[0],dx=(wx2-first.x)*scale,dy=(wy2-first.y)*scale;if(Math.sqrt(dx*dx+dy*dy)<15){confirmVertex();return;}}
     vertices.push({x:wx2,y:wy2});
     document.getElementById('status').textContent='頂点 '+vertices.length+'個 / Enterで確定 / Escでキャンセル';
-    draw();
+    draw();updateUndoFab();
   }
 });
 canvas.addEventListener('mousemove',function(e){

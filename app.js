@@ -1324,6 +1324,13 @@ function initLeafletMap(){
   osmJp.on('tileerror',()=>{if(!osmFailed){osmFailed=true;leafletMap.removeLayer(osmJp);carto.addTo(leafletMap);}});
   osmJp.addTo(leafletMap);
   PROPS.forEach(p=>{if(p.lat&&p.lng) addMapMarker(p);});
+  // 地図を動かす/ズームするたびに、表示範囲内の物件を優先してサイドバー更新
+  let _moveTimer=null;
+  leafletMap.on('moveend zoomend',()=>{
+    if(window._suppressMapResort) return; // クリック由来の移動では並べ替えない
+    clearTimeout(_moveTimer);
+    _moveTimer=setTimeout(renderMapSidebar,200);
+  });
   renderMapSidebar();
 }
 
@@ -1360,17 +1367,39 @@ function removeMapMarker(id){if(mapMarkers[id]){mapMarkers[id].remove();delete m
 
 function renderMapSidebar(){
   const container=document.getElementById('map-results');if(!container) return;
-  const filtered=getFilteredProps();
+  let filtered=getFilteredProps();
+
+  // マップの表示範囲内の物件を優先的に上位へ並べ替え
+  let inViewCount=0;
+  if(leafletMap){
+    const bounds=leafletMap.getBounds();
+    const center=leafletMap.getCenter();
+    const inView=[], outView=[];
+    filtered.forEach(p=>{
+      if(p.lat&&p.lng&&bounds.contains([p.lat,p.lng])) inView.push(p);
+      else outView.push(p);
+    });
+    // 範囲内は中心に近い順にソート
+    const dist2=(p)=>{const dx=p.lat-center.lat,dy=p.lng-center.lng;return dx*dx+dy*dy;};
+    inView.sort((a,b)=>dist2(a)-dist2(b));
+    inViewCount=inView.length;
+    filtered=[...inView, ...outView];
+  }
+
   container.innerHTML=filtered.length?filtered.map((p,i)=>{
     const hasLoc=!!(p.lat&&p.lng);
     const locBadge=hasLoc?'':`<span style="font-size:9px;background:#fee2e2;color:#dc2626;padding:1px 5px;border-radius:3px;margin-left:4px">位置情報なし</span>`;
-    return `<div class="result-item${i===0?' on':''}${hasLoc?'':' no-loc'}" data-prop-id="${p.id}" onclick="focusMapPin(${p.id})">
-      <div style="font-size:12px;font-weight:600;color:var(--navy)">${p.name}${locBadge}</div>
+    // 表示範囲の区切り線（範囲内の最後の次に「範囲外」ラベル）
+    const divider=(inViewCount>0&&i===inViewCount)?`<div style="font-size:10px;color:#94a3b8;padding:8px 4px 4px;border-top:1px dashed var(--border);margin-top:4px">― 表示範囲外の物件 ―</div>`:'';
+    const inViewMark=(i<inViewCount)?`<span style="font-size:9px;background:#dbeafe;color:#1d4ed8;padding:1px 5px;border-radius:3px;margin-left:4px">表示中</span>`:'';
+    return `${divider}<div class="result-item${i===0?' on':''}${hasLoc?'':' no-loc'}" data-prop-id="${p.id}" onclick="focusMapPin(${p.id})">
+      <div style="font-size:12px;font-weight:600;color:var(--navy)">${p.name}${inViewMark}${locBadge}</div>
       <div style="font-size:11px;color:#64748b;margin:2px 0">¥${Number(p.price).toLocaleString()} / ${p.madori} / ${p.size}㎡</div>
       <div style="font-size:11px;color:#64748b">${p.station||''}駅 徒歩${p.walkMin||'?'}分</div>
     </div>`;
   }).join(''):'<div style="padding:14px;font-size:12px;color:#94a3b8;text-align:center">条件に合う物件が見つかりません</div>';
-  const cnt=document.getElementById('map-count');if(cnt) cnt.textContent=filtered.length+'件';
+  const cnt=document.getElementById('map-count');
+  if(cnt) cnt.textContent=inViewCount>0?`表示中 ${inViewCount}件 / 全${filtered.length}件`:filtered.length+'件';
   const cntM=document.getElementById('map-mobile-count');if(cntM) cntM.textContent=filtered.length+'件';
 }
 
@@ -1378,7 +1407,11 @@ function focusMapPin(id){
   document.querySelectorAll('#map-results .result-item').forEach(el=>el.classList.toggle('on',el.dataset.propId===String(id)));
   const p=PROPS.find(p=>p.id===id);if(!p) return;
   if(p.lat&&p.lng){
-    if(leafletMap){leafletMap.flyTo([p.lat,p.lng],17,{duration:0.8});setTimeout(()=>{if(mapMarkers[id]) mapMarkers[id].openPopup();},850);}
+    if(leafletMap){
+      window._suppressMapResort=true; // クリックによる移動中は並べ替えを抑制
+      leafletMap.flyTo([p.lat,p.lng],17,{duration:0.8});
+      setTimeout(()=>{if(mapMarkers[id]) mapMarkers[id].openPopup();window._suppressMapResort=false;},900);
+    }
     return;
   }
   const addr=normalizeAddress(p.address)||normalizeAddress(p.area)||p.station;

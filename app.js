@@ -1318,11 +1318,19 @@ function initLeafletMap(){
   const el=document.getElementById('leaf-map');if(!el) return;
   if(typeof L==='undefined'){el.innerHTML='<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#666;font-size:13px">地図ライブラリを読み込めませんでした</div>';return;}
   leafletMap=L.map('leaf-map',{preferCanvas:true,fadeAnimation:false,markerZoomAnimation:false}).setView([35.6762,139.6503],12);
+  // ベースマップ：OSM日本（駅名が日本語で読みやすい）
   const osmJp=L.tileLayer('https://tile.openstreetmap.jp/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap contributors',maxZoom:18,updateWhenIdle:true,updateWhenZooming:false,keepBuffer:2});
   const carto=L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{attribution:'&copy; OpenStreetMap &copy; CARTO',subdomains:'abcd',maxZoom:19,updateWhenIdle:true,updateWhenZooming:false,keepBuffer:2});
   let osmFailed=false;
   osmJp.on('tileerror',()=>{if(!osmFailed){osmFailed=true;leafletMap.removeLayer(osmJp);carto.addTo(leafletMap);}});
   osmJp.addTo(leafletMap);
+  // 鉄道強調オーバーレイ：OpenRailwayMap（路線・駅をくっきり表示）
+  const railway=L.tileLayer('https://{s}.tiles.openrailwaymap.org/standard/{z}/{x}/{y}.png',{
+    attribution:'&copy; OpenRailwayMap',
+    subdomains:'abc',maxZoom:19,opacity:0.85,
+    updateWhenIdle:true,updateWhenZooming:false,keepBuffer:1,
+  });
+  railway.addTo(leafletMap);
   PROPS.forEach(p=>{if(p.lat&&p.lng) addMapMarker(p);});
   // 地図を動かす/ズームするたびに、表示範囲内の物件を優先してサイドバー更新
   let _moveTimer=null;

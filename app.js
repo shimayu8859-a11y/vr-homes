@@ -1322,7 +1322,7 @@ async function sendMailToUser(email){
   if(!subject||!bodyText){show('件名と本文を入力してください',false);return;}
   show('送信中...',true);
   // サイト内メールにも保存
-  saveMessage({
+  await saveMessage({
     id:'m'+Date.now(), to:email, from:(currentUser&&currentUser.email)||MASTER_EMAIL,
     fromName:(currentUser&&currentUser.name)||'運営',
     subject, body:bodyText, time:new Date().toISOString(), read:false
@@ -1363,7 +1363,7 @@ async function adminResetPassword(targetEmail){
     const np=document.getElementById('ud-new-pass');if(np) np.value='';
     const mp=document.getElementById('ud-master-pass');if(mp) mp.value='';
     // サイト内メールでも通知
-    saveMessage({
+    await saveMessage({
       id:'m'+Date.now(), to:targetEmail, from:currentUser.email, fromName:currentUser.name||'運営',
       subject:'【VR Homes】パスワードが再設定されました',
       body:'管理者によりパスワードが再設定されました。新しいパスワードは管理者からお受け取りください。\nログイン後、マイページから任意のパスワードに変更できます。',
@@ -2089,28 +2089,74 @@ async function scheduleAutoGeocode(){
 /* ══════════════════════════════════════
    お問い合わせ / サイト内メッセージ
 ══════════════════════════════════════ */
-const INBOX_KEY = 'vr_inbox';
+const INBOX_KEY = 'vr_inbox';        // ローカルフォールバック用
+let _inboxCache = [];                // 現在のユーザーの受信箱（サーバーから取得）
 
-/* サイト内メッセージをローカルに保存（宛先ごと） */
-function saveMessage(msg){
+/* サイト内メッセージを送信（サーバー保存＝別端末の相手にも届く） */
+async function saveMessage(msg){
+  // ① サーバーに保存（本命）
+  if(AWS_API_URL){
+    try{
+      const res=await fetch(AWS_API_URL+'?action=sendMessage',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(msg)
+      });
+      if(res.ok){
+        const d=await res.json().catch(()=>({}));
+        if(d&&d.success) return true;
+      }
+    }catch(e){ console.warn('サイト内メール送信失敗:',e.message); }
+  }
+  // ② フォールバック：ローカルに保存（オフライン時・デモ用）
   let inbox={};
   try{ inbox=JSON.parse(localStorage.getItem(INBOX_KEY)||'{}'); }catch(e){}
   if(!inbox[msg.to]) inbox[msg.to]=[];
   inbox[msg.to].unshift(msg);
   try{ localStorage.setItem(INBOX_KEY, JSON.stringify(inbox)); }catch(e){}
+  return false;
 }
+
+/* 受信箱をサーバーから取得 */
+async function fetchMessages(email){
+  if(AWS_API_URL){
+    try{
+      const res=await fetch(AWS_API_URL+'?action=getMessages&email='+encodeURIComponent(email));
+      if(res.ok){
+        const list=await res.json();
+        if(Array.isArray(list)){ _inboxCache=list; return list; }
+      }
+    }catch(e){ console.warn('受信箱取得失敗:',e.message); }
+  }
+  // フォールバック：ローカル
+  let inbox={};
+  try{ inbox=JSON.parse(localStorage.getItem(INBOX_KEY)||'{}'); }catch(e){}
+  _inboxCache=inbox[email]||[];
+  return _inboxCache;
+}
+
+/* キャッシュから取得（同期的に使う場所用） */
 function getMessagesFor(email){
+  return _inboxCache;
+}
+
+async function markMessagesRead(email){
+  if(AWS_API_URL){
+    try{
+      await fetch(AWS_API_URL+'?action=markMessagesRead',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({email})
+      });
+    }catch(e){}
+  }
+  _inboxCache.forEach(m=>m.read=true);
+  // ローカルも更新
   let inbox={};
   try{ inbox=JSON.parse(localStorage.getItem(INBOX_KEY)||'{}'); }catch(e){}
-  return inbox[email]||[];
+  if(inbox[email]){ inbox[email].forEach(m=>m.read=true); try{localStorage.setItem(INBOX_KEY, JSON.stringify(inbox));}catch(e){} }
 }
-function markMessagesRead(email){
-  let inbox={};
-  try{ inbox=JSON.parse(localStorage.getItem(INBOX_KEY)||'{}'); }catch(e){}
-  if(inbox[email]){ inbox[email].forEach(m=>m.read=true); localStorage.setItem(INBOX_KEY, JSON.stringify(inbox)); }
-}
+
 function unreadCount(email){
-  return getMessagesFor(email).filter(m=>!m.read).length;
+  return _inboxCache.filter(m=>!m.read).length;
 }
 
 /* AWS経由で実メール送信を試みる */
@@ -2178,7 +2224,7 @@ async function submitContact(propId){
     time:new Date().toISOString(), read:false
   };
   // サイト内メール保存
-  saveMessage(msg);
+  await saveMessage(msg);
   // 実メール送信
   show('送信中...',true);
   const mailOk=await sendRealMail(to, msg.subject, `${name} 様（${email}）からお問い合わせがありました。\n\n物件：${prop.name}\n\n${text}`);
@@ -2200,7 +2246,7 @@ async function submitMasterContact(){
     subject:'【運営へのお問い合わせ】', body:text,
     time:new Date().toISOString(), read:false
   };
-  saveMessage(msg);
+  await saveMessage(msg);
   show('送信中...',true);
   const mailOk=await sendRealMail(MASTER_EMAIL,'【運営へのお問い合わせ】',`${name} 様（${email}）\n\n${text}`);
   show(mailOk?'✓ 送信しました':'✓ サイト内メールに送信しました',true);
@@ -2209,10 +2255,11 @@ async function submitMasterContact(){
 }
 
 /* 受信箱を描画（マイページ・受信箱タブ） */
-function renderInbox(){
+async function renderInbox(){
   const container=document.getElementById('mp-inbox-list');
   if(!container||!currentUser) return;
-  const msgs=getMessagesFor(currentUser.email);
+  container.innerHTML=`<div style="padding:30px 0;text-align:center;color:#94a3b8;font-size:12px">読み込み中...</div>`;
+  const msgs=await fetchMessages(currentUser.email);
   markMessagesRead(currentUser.email);
   updateInboxBadge();
   if(!msgs.length){
@@ -2224,20 +2271,22 @@ function renderInbox(){
     <div class="card" style="margin-bottom:10px;padding:16px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
         <div style="font-size:13px;font-weight:700;color:var(--navy)">${m.subject}</div>
-        <div style="font-size:11px;color:#94a3b8;flex-shrink:0;margin-left:8px">${formatTimeAgo(new Date(m.time))}</div>
+        <div style="font-size:11px;color:#94a3b8;flex-shrink:0;margin-left:8px">${m.time?formatTimeAgo(new Date(m.time)):''}</div>
       </div>
       <div style="font-size:12px;color:#64748b;margin-bottom:8px">
-        <i class="ti ti-user"></i> ${m.fromName} <span style="color:#94a3b8">（${m.from}）</span>
+        <i class="ti ti-user"></i> ${m.fromName||'不明'} <span style="color:#94a3b8">（${m.from||''}）</span>
       </div>
-      <div style="font-size:13px;color:var(--navy);line-height:1.7;white-space:pre-wrap;background:var(--surface2);border-radius:8px;padding:12px">${m.body}</div>
+      <div style="font-size:13px;color:var(--navy);line-height:1.7;white-space:pre-wrap;background:var(--surface2);border-radius:8px;padding:12px">${m.body||''}</div>
       <div style="margin-top:10px">
-        <a href="mailto:${m.from}?subject=Re: ${encodeURIComponent(m.subject)}" class="btn btn-sm"><i class="ti ti-corner-up-left"></i> メールで返信</a>
+        <a href="mailto:${m.from}?subject=Re: ${encodeURIComponent(m.subject||'')}" class="btn btn-sm"><i class="ti ti-corner-up-left"></i> メールで返信</a>
       </div>
     </div>`).join('');
 }
 
-function updateInboxBadge(){
+async function updateInboxBadge(){
   if(!currentUser) return;
+  // キャッシュが空ならサーバーから取得
+  if(!_inboxCache.length){ await fetchMessages(currentUser.email); }
   const n=unreadCount(currentUser.email);
   const badge=document.getElementById('mp-inbox-badge');
   if(badge){ badge.textContent=n; badge.style.display=n>0?'inline-block':'none'; }
@@ -2947,9 +2996,35 @@ function renderGroupManagement(){
                 ${m.email===currentUser.email?'<span style="font-size:10px;color:#94a3b8">（あなた）</span>':''}
                 ${m.groupOwner?'<span class="tag tb" style="font-size:9px;margin-left:4px">オーナー</span>':''}
               </div>
-              <span style="font-size:11px;color:#94a3b8">${m.email}</span>
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="font-size:11px;color:#94a3b8">${m.email}</span>
+                ${isOwner&&m.email!==currentUser.email?`<button class="btn btn-sm" style="font-size:10px;padding:2px 8px;color:var(--red)" onclick="removeGroupMember('${m.email}')" title="このメンバーを外す"><i class="ti ti-user-minus"></i></button>`:''}
+              </div>
             </div>`).join('')}
         </div>
+
+        <!-- メールアドレスで直接招待 -->
+        <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border)">
+          <div style="font-size:12px;font-weight:700;color:var(--navy);margin-bottom:4px"><i class="ti ti-user-plus" style="color:var(--blue)"></i> メンバーを直接追加</div>
+          <p style="font-size:11px;color:#94a3b8;margin-bottom:8px">登録済みの管理者を、招待コードなしで直接グループに追加できます。</p>
+          <div style="display:flex;gap:8px">
+            <input class="finput" id="invite-email" placeholder="追加する管理者のメールアドレス" style="flex:1;font-size:12px">
+            <button class="btn btn-p btn-sm" style="white-space:nowrap" onclick="inviteMemberByEmail()"><i class="ti ti-plus"></i> 追加</button>
+          </div>
+          <div id="invite-status" style="display:none;font-size:11px;margin-top:6px"></div>
+          <!-- 追加できる管理者の候補 -->
+          <div style="margin-top:10px">
+            <div style="font-size:11px;color:#94a3b8;margin-bottom:6px">未所属の管理者から選ぶ</div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px" id="invite-candidates">
+              ${(()=>{
+                const cands=userStore.filter(u=>u.role==='admin'&&!u.groupId&&u.email!==currentUser.email);
+                if(!cands.length) return '<span style="font-size:11px;color:#cbd5e1">候補がいません</span>';
+                return cands.map(c=>`<button class="btn btn-sm" style="font-size:11px;padding:4px 10px" onclick="inviteMemberDirect('${c.email}')"><i class="ti ti-plus"></i> ${c.name}</button>`).join('');
+              })()}
+            </div>
+          </div>
+        </div>
+
         <button class="btn btn-sm" style="margin-top:16px;color:var(--red);border-color:var(--red-b)" onclick="leaveGroup()">
           <i class="ti ti-logout"></i> グループを脱退
         </button>
@@ -3025,6 +3100,75 @@ function leaveGroup(){
 }
 window.createGroup=createGroup;window.joinGroup=joinGroup;window.leaveGroup=leaveGroup;
 window.renderGroupManagement=renderGroupManagement;
+
+/* メールアドレスを指定してメンバーを直接追加 */
+async function inviteMemberByEmail(){
+  const el=document.getElementById('invite-email');
+  const email=(el?.value||'').trim();
+  const status=document.getElementById('invite-status');
+  const show=(t,ok)=>{if(status){status.style.cssText=`display:block;font-size:11px;margin-top:6px;color:${ok?'var(--green)':'var(--red)'}`;status.textContent=t;}};
+  if(!email){show('メールアドレスを入力してください',false);return;}
+  await _addMemberToGroup(email, show);
+  if(el) el.value='';
+}
+
+/* 候補ボタンから直接追加 */
+async function inviteMemberDirect(email){
+  const status=document.getElementById('invite-status');
+  const show=(t,ok)=>{if(status){status.style.cssText=`display:block;font-size:11px;margin-top:6px;color:${ok?'var(--green)':'var(--red)'}`;status.textContent=t;}};
+  await _addMemberToGroup(email, show);
+}
+
+/* グループにメンバーを追加する共通処理 */
+async function _addMemberToGroup(email, show){
+  if(!currentUser||!currentUser.groupId){show('先にグループを作成してください',false);return;}
+  const target=userStore.find(u=>u.email===email);
+  if(!target){show('そのメールアドレスのユーザーが見つかりません',false);return;}
+  if(target.email===currentUser.email){show('自分自身は追加できません',false);return;}
+  if(target.role!=='admin'&&target.role!=='master'){show('管理者のみグループに追加できます',false);return;}
+  if(target.groupId===currentUser.groupId){show('すでにこのグループのメンバーです',false);return;}
+  if(target.groupId){
+    if(!confirm(`「${target.name}」は既に別のグループに所属しています。\nこのグループに移動しますか？`)) return;
+  }
+  target.groupId=currentUser.groupId;
+  target.groupName=currentUser.groupName;
+  target.groupOwner=false;
+  await saveUserToAWS(target);
+  // 本人に通知
+  await saveMessage({
+    id:'m'+Date.now(), to:target.email, from:currentUser.email, fromName:currentUser.name||'運営',
+    subject:`【VR Homes】グループ「${currentUser.groupName}」に追加されました`,
+    body:`${currentUser.name} さんにより、グループ「${currentUser.groupName}」に追加されました。\n\nこれにより、グループメンバーの物件を編集・削除できるようになります。\n管理者画面の「グループ」タブから確認できます。`,
+    time:new Date().toISOString(), read:false
+  });
+  sendRealMail(target.email, `【VR Homes】グループに追加されました`,
+    `${currentUser.name} さんにより、グループ「${currentUser.groupName}」に追加されました。`).catch(()=>{});
+  show(`✓ 「${target.name}」をグループに追加しました`,true);
+  renderGroupManagement();
+  renderAdminPropTable();
+}
+
+/* グループからメンバーを外す（オーナーのみ） */
+async function removeGroupMember(email){
+  if(!currentUser||!currentUser.groupOwner){showToast('オーナーのみメンバーを外せます','warn');return;}
+  const target=userStore.find(u=>u.email===email);
+  if(!target) return;
+  if(!confirm(`「${target.name}」をグループから外しますか？`)) return;
+  target.groupId=null;target.groupName=null;target.groupOwner=false;
+  await saveUserToAWS(target);
+  await saveMessage({
+    id:'m'+Date.now(), to:target.email, from:currentUser.email, fromName:currentUser.name||'運営',
+    subject:`【VR Homes】グループから外れました`,
+    body:`グループ「${currentUser.groupName}」から外れました。`,
+    time:new Date().toISOString(), read:false
+  });
+  showToast(`「${target.name}」をグループから外しました`,'info');
+  renderGroupManagement();
+  renderAdminPropTable();
+}
+window.inviteMemberByEmail=inviteMemberByEmail;
+window.inviteMemberDirect=inviteMemberDirect;
+window.removeGroupMember=removeGroupMember;
 /* ── 広告管理 隠しコード解放 ── */
 const AD_UNLOCK_KEY = 'vr_ad_unlocked';
 function isAdUnlocked() {

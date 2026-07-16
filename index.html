@@ -688,10 +688,14 @@
           <button class="btn btn-p btn-sm" onclick="toggleAddForm()"><i class="ti ti-plus"></i>物件を追加</button>
         </div>
         <div class="add-form" id="add-form">
-          <div style="font-size:15px;font-weight:800;margin-bottom:16px;display:flex;align-items:center;gap:8px;color:var(--navy)">
-            <span id="af-form-title">新規物件登録</span>
-            <span id="af-edit-badge" style="display:none;font-size:11px;background:#fef3c7;color:#92400e;padding:2px 10px;border-radius:20px;font-weight:700">編集モード</span>
-          </div>
+          <div class="add-form-inner">
+            <div class="add-form-head">
+              <div style="font-size:16px;font-weight:800;display:flex;align-items:center;gap:8px;color:var(--navy)">
+                <span id="af-form-title">新規物件登録</span>
+                <span id="af-edit-badge" style="display:none;font-size:11px;background:#fef3c7;color:#92400e;padding:2px 10px;border-radius:20px;font-weight:700">編集モード</span>
+              </div>
+              <button class="add-form-close" onclick="toggleAddForm()" title="閉じる"><i class="ti ti-x"></i></button>
+            </div>
           <div class="add-form-grid">
             <div class="field"><div class="flabel">物件名 <span class="req">*</span></div><input class="finput" id="af-name" placeholder="例：ハイツ渋谷" onkeydown="handleFormKey(event,'af-address')"></div>
             <div class="field" style="grid-column:1/-1">
@@ -798,9 +802,10 @@
               </div>
             </div>
           </div>
-          <div style="display:flex;gap:8px;justify-content:flex-end">
+          <div style="display:flex;gap:8px;justify-content:flex-end;position:sticky;bottom:0;background:var(--surface);padding:14px 0;border-top:1px solid var(--border);margin-top:8px">
             <button class="btn btn-sm" onclick="toggleAddForm()">キャンセル</button>
             <button class="btn btn-p btn-sm" id="af-submit-btn" onclick="addProperty()"><i class="ti ti-check"></i> 登録する</button>
+          </div>
           </div>
         </div>
         <div class="admin-table-wrap">

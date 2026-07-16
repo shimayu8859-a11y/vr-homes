@@ -2,7 +2,7 @@
    STATE & CONSTANTS
 ══════════════════════════════════════ */
 const MASTER_EMAIL = 'nori1216chopper@gmail.com';
-const ADMIN_CODE   = 'administrator';
+const ADMIN_CODE   = 'admin';
 const MASTER_CODE  = 'master';
 const AD_SECRET_CODE = 'zakoshi';
 const AWS_API_URL  = 'https://h5mx5gy6l2y7v6k46kxxfsm4li0cxnpr.lambda-url.ap-northeast-3.on.aws/';
@@ -96,11 +96,21 @@ const REGION_MAP = {
 
 /* 検索キーワードが地方名なら、含まれる都道府県のいずれかにマッチするか判定 */
 function matchesRegionOrText(prop, keyword){
-  const hay=(prop.name+prop.area+prop.station+prop.address+prop.description).toLowerCase();
-  const kw=keyword.toLowerCase();
-  // 通常の文字列一致
+  // アクセス欄（複数駅）・詳細も検索対象に含める → 徒歩圏内の駅すべてでヒット
+  const d=prop.details||{};
+  const hay=[
+    prop.name, prop.area, prop.station, prop.address, prop.description,
+    prop.access,            // 「あおなみ線/荒子駅 徒歩7分」など複数駅
+    d.surroundings,         // 周辺情報
+    prop.madori, prop.type
+  ].filter(Boolean).join(' ').toLowerCase();
+  const kw=keyword.toLowerCase().trim();
+  if(!kw) return true;
+  // 「駅」を付けても外しても両方ヒットするように
+  const kwNoStation=kw.replace(/駅$/,'');
   if(hay.includes(kw)) return true;
-  // 地方名マッチ：「地方」「地区」などの語を除いて判定
+  if(kwNoStation && hay.includes(kwNoStation)) return true;
+  // 地方名マッチ
   const normalized=keyword.replace(/地方|地区|エリア/g,'').trim();
   for(const region in REGION_MAP){
     if(region.toLowerCase()===kw || region===normalized || region.replace(/・/g,'')===normalized){
@@ -1241,7 +1251,6 @@ function toggleUserActive(email){
 function showUserDetail(email){
   const u=userStore.find(u=>u.email===email);if(!u) return;
   const modal=document.getElementById('user-detail-modal');
-  const pwId='pw_'+email.replace(/[@.]/g,'_');
   document.getElementById('user-detail-content').innerHTML=`
     <div style="text-align:center;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--border)">
       <div class="avatar" style="margin:0 auto 10px;pointer-events:none;${u.photoURL?'background-image:url('+u.photoURL+');background-size:cover;background-position:center':''}">
@@ -1254,17 +1263,26 @@ function showUserDetail(email){
     ${isMaster()?`<div style="background:var(--gold-l);border:1px solid var(--gold-border,#f0d070);border-radius:var(--r-md);padding:14px;margin-bottom:12px">
       <div style="font-size:11px;font-weight:700;color:var(--gold);margin-bottom:10px"><i class="ti ti-crown"></i> マスター専用</div>
       <div style="display:grid;gap:7px;font-size:12px">
-        ${[['メール',u.email],['ロール',u.role],['状態',u.active?'有効':'停止中'],['お気に入り',(u.favs||[]).length+'件'],['履歴',(u.history||[]).length+'件']].map(([l,v])=>`
+        ${[['メール',u.email],['ロール',u.role],['状態',u.active?'有効':'停止中'],
+           ['グループ',u.groupName?u.groupName+'（'+u.groupId+'）':'未所属'],
+           ['お気に入り',(u.favs||[]).length+'件'],['履歴',(u.history||[]).length+'件']].map(([l,v])=>`
         <div style="display:flex;justify-content:space-between"><span style="color:#64748b">${l}</span><span style="font-weight:600">${v}</span></div>`).join('')}
-        <div style="display:flex;justify-content:space-between;align-items:center">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding-top:4px;border-top:1px dashed rgba(0,0,0,.08)">
           <span style="color:#64748b">パスワード</span>
-          <div style="display:flex;gap:6px;align-items:center">
-            <span id="${pwId}" style="font-family:monospace">••••••••</span>
-            <button class="btn btn-sm" style="font-size:10px" onclick="const el=document.getElementById('${pwId}');el.textContent=el.textContent==='${u.password}'?'••••••••':'${u.password}'">表示</button>
-          </div>
+          <span style="font-size:11px;color:#94a3b8"><i class="ti ti-lock"></i> 暗号化されています</span>
         </div>
       </div>
     </div>`:''}
+    <!-- メール送信 -->
+    <div style="background:var(--surface2);border-radius:var(--r-md);padding:14px;margin-bottom:12px">
+      <div style="font-size:11px;font-weight:700;color:#64748b;margin-bottom:8px"><i class="ti ti-mail"></i> このユーザーにメールを送る</div>
+      <input class="finput" id="ud-mail-subject" placeholder="件名" style="font-size:12px;margin-bottom:6px">
+      <textarea class="finput" id="ud-mail-body" rows="3" placeholder="本文" style="font-size:12px;resize:vertical;margin-bottom:8px"></textarea>
+      <div id="ud-mail-status" style="display:none;font-size:11px;margin-bottom:6px"></div>
+      <button class="btn btn-p btn-sm" style="width:100%;justify-content:center" onclick="sendMailToUser('${email}')">
+        <i class="ti ti-send"></i> 送信する
+      </button>
+    </div>
     ${u.role!=='master'?`<div style="background:var(--surface2);border-radius:var(--r-md);padding:14px;margin-bottom:12px">
       <div style="font-size:11px;font-weight:700;color:#64748b;margin-bottom:8px">ロール変更</div>
       <div style="display:flex;gap:8px">
@@ -1280,6 +1298,28 @@ function showUserDetail(email){
     </button>`:''}`;
   modal.style.display='block';
 }
+
+/* ユーザー詳細からメール送信 */
+async function sendMailToUser(email){
+  const subject=(document.getElementById('ud-mail-subject')||{}).value?.trim()||'';
+  const bodyText=(document.getElementById('ud-mail-body')||{}).value?.trim()||'';
+  const status=document.getElementById('ud-mail-status');
+  const show=(t,ok)=>{if(status){status.style.cssText=`display:block;font-size:11px;margin-bottom:6px;color:${ok?'var(--green)':'var(--red)'}`;status.textContent=t;}};
+  if(!subject||!bodyText){show('件名と本文を入力してください',false);return;}
+  show('送信中...',true);
+  // サイト内メールにも保存
+  saveMessage({
+    id:'m'+Date.now(), to:email, from:(currentUser&&currentUser.email)||MASTER_EMAIL,
+    fromName:(currentUser&&currentUser.name)||'運営',
+    subject, body:bodyText, time:new Date().toISOString(), read:false
+  });
+  const ok=await sendRealMail(email, subject, bodyText);
+  show(ok?'✓ 送信しました（サイト内メール＋メール）':'✓ サイト内メールに送信しました', true);
+  const s=document.getElementById('ud-mail-subject');if(s) s.value='';
+  const b=document.getElementById('ud-mail-body');if(b) b.value='';
+  setTimeout(()=>{if(status) status.style.display='none';},3000);
+}
+window.sendMailToUser=sendMailToUser;
 function closeUserDetail(){document.getElementById('user-detail-modal').style.display='none';}
 function changeRoleFromDetail(email){
   const role=document.getElementById('user-detail-role').value;
@@ -1488,16 +1528,28 @@ function initLeafletMap(){
   const railway=L.tileLayer('https://{s}.tiles.openrailwaymap.org/standard/{z}/{x}/{y}.png',{
     attribution:'&copy; OpenRailwayMap',
     subdomains:'abc',maxZoom:19,opacity:0.85,
+    minZoom:11,  // 広域では読み込まない（軽量化）
     updateWhenIdle:true,updateWhenZooming:false,keepBuffer:1,
   });
-  railway.addTo(leafletMap);
+  // ズーム11以上のときだけ鉄道レイヤーを表示（タイル読み込みを削減）
+  const syncRailway=()=>{
+    const z=leafletMap.getZoom();
+    if(z>=11){ if(!leafletMap.hasLayer(railway)) railway.addTo(leafletMap); }
+    else { if(leafletMap.hasLayer(railway)) leafletMap.removeLayer(railway); }
+  };
+  leafletMap.on('zoomend', syncRailway);
+  syncRailway();
   PROPS.forEach(p=>{if(p.lat&&p.lng) addMapMarker(p);});
   // 地図を動かす/ズームするたびに、表示範囲内の物件を優先してサイドバー更新
   let _moveTimer=null;
   leafletMap.on('moveend zoomend',()=>{
     if(window._suppressMapResort) return; // クリック由来の移動では並べ替えない
     clearTimeout(_moveTimer);
-    _moveTimer=setTimeout(renderMapSidebar,200);
+    // 600msに延長＋マップ画面表示中のみ再描画（軽量化）
+    _moveTimer=setTimeout(()=>{
+      const mapScreen=document.getElementById('s-map');
+      if(mapScreen&&mapScreen.classList.contains('active')) renderMapSidebar();
+    },600);
   });
   renderMapSidebar();
 }
@@ -2292,7 +2344,7 @@ function startEditProp(id){
   if(!canEditProp(prop)){showToast('この物件を編集する権限がありません','warn');return;}
   editingPropId=id;editingExistingPhotos=[...(prop.photoURLs||[])];
   const form=document.getElementById('add-form');
-  if(form&&form.style.display!=='block') toggleAddForm();
+  if(form&&!form.classList.contains('show')) toggleAddForm();
   document.getElementById('af-form-title').textContent='物件を編集: '+prop.name;
   document.getElementById('af-edit-badge').style.display='inline-block';
   document.getElementById('af-submit-btn').innerHTML='<i class="ti ti-device-floppy"></i> 変更を保存';
@@ -2513,8 +2565,10 @@ function pdGoTo(idx){const prop=PROPS.find(p=>p.id===pdCurrentId);if(!prop) retu
 ══════════════════════════════════════ */
 function toggleAddForm(){
   const f=document.getElementById('add-form');
-  const wasOpen=f.style.display==='block';
-  f.style.display=wasOpen?'none':'block';
+  const wasOpen=f.classList.contains('show');
+  f.classList.toggle('show',!wasOpen);
+  document.body.style.overflow=wasOpen?'':'hidden';
+  if(!wasOpen) f.scrollTop=0;
   if(wasOpen&&editingPropId!=null){resetEditMode();clearAddForm();}
 }
 

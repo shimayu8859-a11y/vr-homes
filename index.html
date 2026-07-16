@@ -674,6 +674,7 @@
     <div class="admin-sidebar">
       <div class="admin-sidebar-title">MENU</div>
       <div class="admin-nav-item on" onclick="switchAdmin('props',this)"><i class="ti ti-building"></i>物件管理</div>
+      <div class="admin-nav-item" onclick="switchAdmin('group',this)"><i class="ti ti-users-group"></i>グループ</div>
       <div class="admin-nav-item" onclick="switchAdmin('users',this)"><i class="ti ti-users"></i>ユーザー管理</div>
       <div class="admin-nav-item" onclick="switchAdmin('stats',this)"><i class="ti ti-chart-bar"></i>分析</div>
       <div style="margin-top:20px;padding-top:16px;border-top:1px solid rgba(255,255,255,.06)">
@@ -808,6 +809,13 @@
           </div>
           <div id="prop-table-body"></div>
         </div>
+      </div>
+      <div id="admin-group" style="display:none">
+        <h2 style="font-size:18px;font-weight:800;margin-bottom:6px;color:var(--navy)">グループ管理</h2>
+        <p style="font-size:13px;color:#64748b;margin-bottom:20px;line-height:1.7">
+          グループを作って他の管理者を招待すると、グループ内の管理者どうしでお互いの物件を編集・削除できるようになります。
+        </p>
+        <div id="group-content"></div>
       </div>
       <div id="admin-users" style="display:none">
         <h2 style="font-size:18px;font-weight:800;margin-bottom:18px;color:var(--navy)">ユーザー管理</h2>

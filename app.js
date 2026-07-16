@@ -391,10 +391,16 @@ async function searchMapAddressMobile() {
 function openMobileFilterSheet(){
   const sheet=document.getElementById('map-filter-sheet');
   if(sheet) sheet.classList.add('show');
+  const cur=history.state;
+  pushNavState({screen:(cur&&cur.screen)||'map', modal:'filter'});
 }
 function closeMobileFilterSheet(){
   const sheet=document.getElementById('map-filter-sheet');
+  const wasOpen=sheet&&sheet.classList.contains('show');
   if(sheet) sheet.classList.remove('show');
+  if(wasOpen && !_navSuppress && history.state && history.state.modal==='filter'){
+    history.back();
+  }
 }
 
 /* TOP検索→MAPアドレスバー（PC・スマホ両方）にも反映 */
@@ -421,6 +427,7 @@ function cacheUserLocal(user){
   cache[user.email]={
     name:user.name, email:user.email,
     role:user.role, active:user.active, photoURL:user.photoURL||null,
+    groupId:user.groupId||null, groupName:user.groupName||null, groupOwner:user.groupOwner||false,
     wishlist:user.wishlist||{}, favs:user.favs||[], history:user.history||[],
     _updated:Date.now()
   };
@@ -446,11 +453,15 @@ function mergeUserCache(){
       existing.active=(cu.active!==undefined)?cu.active:existing.active;
       existing.photoURL=cu.photoURL||existing.photoURL;
       existing.wishlist=cu.wishlist||existing.wishlist||{};
+      if(cu.groupId!==undefined) existing.groupId=cu.groupId;
+      if(cu.groupName!==undefined) existing.groupName=cu.groupName;
+      if(cu.groupOwner!==undefined) existing.groupOwner=cu.groupOwner;
     } else {
       // AWSにないユーザーはキャッシュから復元（パスワードなし＝サーバー認証専用）
       userStore.push({
         name:cu.name, email:cu.email,
         role:cu.role||'user', active:cu.active!==false, photoURL:cu.photoURL||null,
+        groupId:cu.groupId||null, groupName:cu.groupName||null, groupOwner:cu.groupOwner||false,
         wishlist:cu.wishlist||{}, favs:cu.favs||[], history:cu.history||[]
       });
     }
@@ -606,6 +617,30 @@ function normalizeAddress(addr){
 ══════════════════════════════════════ */
 function isMaster(u){return (u||currentUser)?.role==='master';}
 function isAdmin(u){const r=(u||currentUser)?.role;return r==='admin'||r==='master';}
+
+/* ══════════════════════════════════════
+   物件の編集・削除権限の判定
+   - マスター：すべて可
+   - 管理者：自分が追加した物件、または同じグループの管理者が追加した物件
+   - それ以外：不可
+══════════════════════════════════════ */
+function canEditProp(prop){
+  if(!currentUser) return false;
+  if(isMaster()) return true;              // マスターは自由
+  if(!isAdmin()) return false;             // 管理者未満は不可
+  if(!prop) return false;
+  // 自分が追加した物件
+  if(prop.ownerEmail && prop.ownerEmail===currentUser.email) return true;
+  // オーナー情報がない古い物件は、管理者なら編集可（後方互換）
+  if(!prop.ownerEmail) return true;
+  // 同じグループのメンバーが追加した物件
+  const myGroup=currentUser.groupId;
+  if(myGroup){
+    const owner=userStore.find(u=>u.email===prop.ownerEmail);
+    if(owner && owner.groupId===myGroup) return true;
+  }
+  return false;
+}
 function isRegular(u){return (u||currentUser)?.role==='user';}
 function roleLabel(role){
   if(role==='master') return '<span class="tag tmaster">マスター</span>';
@@ -947,6 +982,8 @@ function doLogout(){
   isLoggedIn=false;currentUser=null;
   try{ localStorage.removeItem('vr_session_email'); }catch(e){}
   document.documentElement.classList.remove('has-session');
+  // 履歴をクリア（ログアウト後に戻るで中に入れないように）
+  try{ history.replaceState({screen:'top'}, '', location.pathname+location.search); }catch(e){}
   // ログイン画面フォームをリセット
   const form=document.getElementById('gate-form');
   if(form) form.innerHTML='';
@@ -1283,12 +1320,135 @@ function quickSetRole(email,role){const u=userStore.find(u=>u.email===email);if(
 /* ══════════════════════════════════════
    SCREEN NAV
 ══════════════════════════════════════ */
+/* ══════════════════════════════════════
+   履歴ナビゲーション（スワイプ／戻るボタン対応）
+   画面遷移・モーダルを history に積み、popstate で戻す
+══════════════════════════════════════ */
+let _navSuppress = false;   // popstate 由来の遷移中は pushState しない
+let _navInitialized = false;
+
+/* 現在の状態を履歴に積む */
+function pushNavState(state){
+  if(_navSuppress) return;
+  try{
+    const hash = state.modal ? `#${state.screen}/${state.modal}` : `#${state.screen}`;
+    history.pushState(state, '', hash);
+  }catch(e){}
+}
+
+/* 履歴の現在エントリを置き換える（初期表示・同一画面内の遷移用） */
+function replaceNavState(state){
+  try{
+    const hash = state.modal ? `#${state.screen}/${state.modal}` : `#${state.screen}`;
+    history.replaceState(state, '', hash);
+  }catch(e){}
+}
+
+/* 現在開いているモーダルを取得 */
+function getOpenModal(){
+  const pd=document.getElementById('pd-overlay');
+  if(pd&&pd.classList.contains('show')) return 'detail';
+  const ct=document.getElementById('contact-overlay');
+  if(ct&&ct.classList.contains('show')) return 'contact';
+  const fe=document.getElementById('floor-editor-overlay');
+  if(fe&&fe.classList.contains('show')) return 'floor';
+  const fs=document.getElementById('map-filter-sheet');
+  if(fs&&fs.classList.contains('show')) return 'filter';
+  return null;
+}
+
+/* 開いているモーダルをすべて閉じる（履歴を積まずに） */
+function closeAllModals(){
+  _navSuppress=true;
+  try{
+    const pd=document.getElementById('pd-overlay');
+    if(pd&&pd.classList.contains('show')) closePropDetail();
+    const ct=document.getElementById('contact-overlay');
+    if(ct&&ct.classList.contains('show')) closeContactForm();
+    const fe=document.getElementById('floor-editor-overlay');
+    if(fe&&fe.classList.contains('show')) closeFloorEditor();
+    const fs=document.getElementById('map-filter-sheet');
+    if(fs&&fs.classList.contains('show')) closeMobileFilterSheet();
+  }finally{ _navSuppress=false; }
+}
+
+/* 戻る操作（スワイプ／戻るボタン）を処理 */
+function initNavigation(){
+  if(_navInitialized) return;
+  _navInitialized=true;
+
+  window.addEventListener('popstate', (e)=>{
+    const state=e.state;
+    _navSuppress=true;
+    try{
+      // 開いているモーダルがあれば、まず閉じる
+      const openModal=getOpenModal();
+      const targetModal=state&&state.modal;
+      if(openModal && openModal!==targetModal){
+        closeAllModals();
+      }
+      // 画面を戻す
+      if(state&&state.screen){
+        if(!isLoggedIn){
+          // 未ログインなら何もしない（ログイン画面のまま）
+          return;
+        }
+        _applyScreen(state.screen);
+        // 戻り先がモーダルなら再度開く
+        if(state.modal==='detail' && state.propId!=null){
+          _openDetailNoHistory(state.propId);
+        }
+      } else {
+        // stateがない＝最初の状態。モーダルだけ閉じる
+        if(openModal) closeAllModals();
+      }
+    }finally{ _navSuppress=false; }
+  });
+
+  // 初期状態を履歴に記録
+  const initial=(location.hash||'#top').replace('#','').split('/')[0];
+  replaceNavState({screen:initial||'top'});
+}
+
+/* 履歴を積まずに画面だけ切り替える（popstate用） */
+function _applyScreen(id){
+  const el=document.getElementById('s-'+id);
+  if(!el) return;
+  // 権限チェック（戻り先が権限不足なら top へ）
+  if(id==='admin'&&!isAdmin()) { id='top'; }
+  if(id==='master'&&!isMaster()) { id='top'; }
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('s-'+id).classList.add('active');
+  const tab=document.getElementById('tab-'+id);if(tab) tab.classList.add('active');
+  window.scrollTo(0,0);
+  // 画面ごとの再描画
+  if(id==='admin') renderUserTable();
+  if(id==='mypage'){ renderFavorites(); updateInboxBadge(); }
+  if(id==='master'){ renderMasterUserTable();renderRoleTable();renderFieldManagement(); }
+  if(id==='map') setTimeout(()=>{ if(leafletMap) leafletMap.invalidateSize(); else initLeafletMap(); },150);
+}
+
+/* 履歴を積まずに詳細を開く（popstate用） */
+function _openDetailNoHistory(id){
+  const prop=PROPS.find(p=>p.id===id);if(!prop) return;
+  pdCurrentId=id;pdSliderIdx=0;
+  document.getElementById('pd-overlay').classList.add('show');
+  document.body.style.overflow='hidden';
+  renderPropDetail(prop);
+}
+
 function showScreen(id){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   document.getElementById('s-'+id).classList.add('active');
   const tab=document.getElementById('tab-'+id);if(tab) tab.classList.add('active');
   window.scrollTo(0,0);
+  // 履歴に積む（同じ画面の連続pushは避ける）
+  const cur=history.state;
+  if(!_navSuppress && (!cur || cur.screen!==id || cur.modal)){
+    pushNavState({screen:id});
+  }
   // 広告ポップアップ（解放済み＆ONの場合のみ）
   if(isAdUnlocked() && isAdPopupEnabled()) showAdPopup();
 }
@@ -1841,8 +2001,18 @@ function openContactForm(propId){
       <i class="ti ti-send"></i> 送信する
     </button>`;
   ov.classList.add('show');
+  // 履歴に積む（戻る／スワイプで閉じられるように）
+  const cur=history.state;
+  pushNavState({screen:(cur&&cur.screen)||'top', modal:'contact', propId:propId});
 }
-function closeContactForm(){ document.getElementById('contact-overlay').classList.remove('show'); }
+function closeContactForm(){
+  const ov=document.getElementById('contact-overlay');
+  const wasOpen=ov&&ov.classList.contains('show');
+  if(ov) ov.classList.remove('show');
+  if(wasOpen && !_navSuppress && history.state && history.state.modal==='contact'){
+    history.back();
+  }
+}
 
 async function submitContact(propId){
   const prop=PROPS.find(p=>p.id===propId);if(!prop) return;
@@ -2085,19 +2255,28 @@ function updateResultsCount(){
 function renderAdminPropTable(){
   const tbody=document.getElementById('prop-table-body');if(!tbody) return;
   if(!PROPS.length){tbody.innerHTML='<div style="padding:16px;text-align:center;color:#94a3b8;font-size:13px">物件が登録されていません</div>';return;}
-  tbody.innerHTML=PROPS.map(p=>`<div class="admin-table-row" style="grid-template-columns:2fr 1fr 1fr 130px">
-    <span style="font-weight:700;color:var(--navy)">${p.name}${p.floorplanData?'<span class="tag tb" style="font-size:9px;margin-left:4px">VR</span>':''}</span>
+  tbody.innerHTML=PROPS.map(p=>{
+    const canEdit=canEditProp(p);
+    const ownerLabel=p.ownerName?`<span style="font-size:10px;color:#94a3b8">投稿: ${p.ownerName}</span>`:'';
+    const editBtns=canEdit?`
+      <button class="btn btn-sm" style="font-size:10px;padding:3px 8px;color:var(--blue)" onclick="startEditProp(${p.id})"><i class="ti ti-pencil"></i></button>
+      <button class="btn btn-sm" style="font-size:10px;padding:3px 8px;color:var(--red)" onclick="if(confirm('削除しますか？')) deleteProp(${p.id})"><i class="ti ti-trash"></i></button>`
+      :`<span style="font-size:10px;color:#cbd5e1;padding:3px 8px" title="編集権限がありません"><i class="ti ti-lock"></i></span>`;
+    return `<div class="admin-table-row" style="grid-template-columns:2fr 1fr 1fr 130px">
+    <span style="font-weight:700;color:var(--navy)">${p.name}${p.floorplanData?'<span class="tag tb" style="font-size:9px;margin-left:4px">VR</span>':''}<br>${ownerLabel}</span>
     <span style="color:#64748b">${p.area}</span>
     <span style="color:var(--blue);font-weight:700">¥${Number(p.price).toLocaleString()}</span>
     <span style="display:flex;gap:5px">
       <button class="btn btn-sm" style="font-size:10px;padding:3px 8px" onclick="showPropDetail(${p.id})"><i class="ti ti-eye"></i></button>
-      <button class="btn btn-sm" style="font-size:10px;padding:3px 8px;color:var(--blue)" onclick="startEditProp(${p.id})"><i class="ti ti-pencil"></i></button>
-      <button class="btn btn-sm" style="font-size:10px;padding:3px 8px;color:var(--red)" onclick="if(confirm('削除しますか？')) deleteProp(${p.id})"><i class="ti ti-trash"></i></button>
+      ${editBtns}
     </span>
-  </div>`).join('');
+  </div>`;
+  }).join('');
 }
 
 function deleteProp(id){
+  const prop=PROPS.find(p=>p.id===id);
+  if(!canEditProp(prop)){showToast('この物件を削除する権限がありません','warn');return;}
   PROPS=PROPS.filter(p=>p.id!==id);removeMapMarker(id);favs.delete(id);
   renderCards();renderAdminPropTable();renderMapSidebar();updateResultsCount();
   deletePropFromAWS(id);
@@ -2110,6 +2289,7 @@ let editingPropId=null, editingExistingPhotos=[];
 
 function startEditProp(id){
   const prop=PROPS.find(p=>p.id===id);if(!prop){alert('物件が見つかりません');return;}
+  if(!canEditProp(prop)){showToast('この物件を編集する権限がありません','warn');return;}
   editingPropId=id;editingExistingPhotos=[...(prop.photoURLs||[])];
   const form=document.getElementById('add-form');
   if(form&&form.style.display!=='block') toggleAddForm();
@@ -2218,11 +2398,19 @@ function showPropDetail(id){
   document.getElementById('pd-overlay').classList.add('show');
   document.body.style.overflow='hidden';
   renderPropDetail(prop);
+  // 履歴に積む（戻る／スワイプで閉じられるように）
+  const cur=history.state;
+  pushNavState({screen:(cur&&cur.screen)||'top', modal:'detail', propId:id});
 }
 function closePropDetail(){
+  const wasOpen=document.getElementById('pd-overlay').classList.contains('show');
   document.getElementById('pd-overlay').classList.remove('show');
   document.body.style.overflow='';
   if(pdMiniMap){pdMiniMap.remove();pdMiniMap=null;}
+  // ✕で閉じた場合は履歴も1つ戻す（popstate由来なら何もしない）
+  if(wasOpen && !_navSuppress && history.state && history.state.modal==='detail'){
+    history.back();
+  }
 }
 function renderPropDetail(prop){
   const photos=prop.photoURLs||[];
@@ -2559,10 +2747,135 @@ function switchMp(id,el){
   if(id==='hist') renderHistory();
 }
 function switchAdmin(id,el){
-  ['props','users','stats'].forEach(k=>document.getElementById('admin-'+k).style.display=k===id?'block':'none');
-  document.querySelectorAll('.admin-nav-item').forEach(i=>i.classList.remove('on'));el.classList.add('on');
+  ['props','group','users','stats'].forEach(k=>document.getElementById('admin-'+k).style.display=k===id?'block':'none');
+  document.querySelectorAll('#s-admin .admin-nav-item').forEach(i=>i.classList.remove('on'));if(el&&el.classList) el.classList.add('on');
   if(id==='users') renderUserTable();
+  if(id==='group') renderGroupManagement();
 }
+
+/* ══════════════════════════════════════
+   グループ管理
+   招待コード方式・1人1グループ
+══════════════════════════════════════ */
+function genGroupCode(){
+  // 6文字の招待コード（読みやすい文字のみ）
+  const chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let c='';for(let i=0;i<6;i++) c+=chars[Math.floor(Math.random()*chars.length)];
+  return c;
+}
+
+function renderGroupManagement(){
+  const el=document.getElementById('group-content');
+  if(!el||!currentUser) return;
+  const myGroup=currentUser.groupId;
+
+  if(myGroup){
+    // すでにグループに所属している
+    const members=userStore.filter(u=>u.groupId===myGroup);
+    const isOwner=currentUser.groupOwner===true;
+    el.innerHTML=`
+      <div class="card" style="max-width:560px;margin-bottom:16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <div>
+            <div style="font-size:11px;color:#94a3b8">所属グループ</div>
+            <div style="font-size:16px;font-weight:800;color:var(--navy)">${currentUser.groupName||'マイグループ'}</div>
+          </div>
+          ${isOwner?`<span class="tag tb" style="font-size:10px">オーナー</span>`:''}
+        </div>
+        <div style="background:var(--surface2);border-radius:10px;padding:14px;margin-bottom:14px">
+          <div style="font-size:11px;color:#64748b;margin-bottom:6px">招待コード（他の管理者に伝えてください）</div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="font-size:22px;font-weight:800;letter-spacing:.2em;color:var(--blue);font-family:monospace">${myGroup}</span>
+            <button class="btn btn-sm" style="font-size:11px" onclick="navigator.clipboard.writeText('${myGroup}').then(()=>showToast('コピーしました','success'))"><i class="ti ti-copy"></i> コピー</button>
+          </div>
+        </div>
+        <div style="font-size:12px;font-weight:700;color:var(--navy);margin-bottom:8px">メンバー（${members.length}人）</div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          ${members.map(m=>`
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px">
+              <div>
+                <span style="font-size:13px;font-weight:600;color:var(--navy)">${m.name}</span>
+                ${m.email===currentUser.email?'<span style="font-size:10px;color:#94a3b8">（あなた）</span>':''}
+                ${m.groupOwner?'<span class="tag tb" style="font-size:9px;margin-left:4px">オーナー</span>':''}
+              </div>
+              <span style="font-size:11px;color:#94a3b8">${m.email}</span>
+            </div>`).join('')}
+        </div>
+        <button class="btn btn-sm" style="margin-top:16px;color:var(--red);border-color:var(--red-b)" onclick="leaveGroup()">
+          <i class="ti ti-logout"></i> グループを脱退
+        </button>
+      </div>`;
+  } else {
+    // グループ未所属：作成 or 参加
+    el.innerHTML=`
+      <div style="display:grid;gap:16px;max-width:560px">
+        <div class="card">
+          <div style="font-size:15px;font-weight:800;color:var(--navy);margin-bottom:6px"><i class="ti ti-plus" style="color:var(--blue)"></i> 新しいグループを作る</div>
+          <p style="font-size:12px;color:#64748b;margin-bottom:12px">グループを作成すると招待コードが発行されます。</p>
+          <div style="display:flex;gap:8px">
+            <input class="finput" id="new-group-name" placeholder="グループ名（例：○○不動産チーム）" style="flex:1;font-size:13px">
+            <button class="btn btn-p btn-sm" style="white-space:nowrap" onclick="createGroup()"><i class="ti ti-plus"></i> 作成</button>
+          </div>
+        </div>
+        <div class="card">
+          <div style="font-size:15px;font-weight:800;color:var(--navy);margin-bottom:6px"><i class="ti ti-login" style="color:var(--green)"></i> グループに参加する</div>
+          <p style="font-size:12px;color:#64748b;margin-bottom:12px">招待コードを入力してグループに参加します。</p>
+          <div style="display:flex;gap:8px">
+            <input class="finput" id="join-group-code" placeholder="招待コード（6文字）" maxlength="6" style="flex:1;font-size:15px;letter-spacing:.15em;text-transform:uppercase;font-family:monospace">
+            <button class="btn btn-p btn-sm" style="white-space:nowrap" onclick="joinGroup()"><i class="ti ti-login"></i> 参加</button>
+          </div>
+        </div>
+      </div>`;
+  }
+}
+
+function createGroup(){
+  const nameEl=document.getElementById('new-group-name');
+  const name=(nameEl?.value||'').trim();
+  if(!name){showToast('グループ名を入力してください','warn');return;}
+  const code=genGroupCode();
+  currentUser.groupId=code;
+  currentUser.groupName=name;
+  currentUser.groupOwner=true;
+  const s=userStore.find(u=>u.email===currentUser.email);
+  if(s){s.groupId=code;s.groupName=name;s.groupOwner=true;}
+  saveUserToAWS(currentUser);
+  showToast('グループを作成しました','success');
+  renderGroupManagement();
+}
+
+function joinGroup(){
+  const codeEl=document.getElementById('join-group-code');
+  const code=(codeEl?.value||'').trim().toUpperCase();
+  if(!code){showToast('招待コードを入力してください','warn');return;}
+  // そのコードのグループが存在するか（既存メンバーを探す）
+  const owner=userStore.find(u=>u.groupId===code);
+  if(!owner){showToast('そのコードのグループが見つかりません','warn');return;}
+  currentUser.groupId=code;
+  currentUser.groupName=owner.groupName||'グループ';
+  currentUser.groupOwner=false;
+  const s=userStore.find(u=>u.email===currentUser.email);
+  if(s){s.groupId=code;s.groupName=owner.groupName;s.groupOwner=false;}
+  saveUserToAWS(currentUser);
+  showToast('グループに参加しました','success');
+  renderGroupManagement();
+  renderAdminPropTable(); // 編集可能な物件が増えるので再描画
+}
+
+function leaveGroup(){
+  if(!confirm('グループを脱退しますか？\n脱退すると、グループメンバーの物件を編集できなくなります。')) return;
+  currentUser.groupId=null;
+  currentUser.groupName=null;
+  currentUser.groupOwner=false;
+  const s=userStore.find(u=>u.email===currentUser.email);
+  if(s){s.groupId=null;s.groupName=null;s.groupOwner=false;}
+  saveUserToAWS(currentUser);
+  showToast('グループを脱退しました','info');
+  renderGroupManagement();
+  renderAdminPropTable();
+}
+window.createGroup=createGroup;window.joinGroup=joinGroup;window.leaveGroup=leaveGroup;
+window.renderGroupManagement=renderGroupManagement;
 /* ── 広告管理 隠しコード解放 ── */
 const AD_UNLOCK_KEY = 'vr_ad_unlocked';
 function isAdUnlocked() {
@@ -3000,7 +3313,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
 fetchUsers().then(()=>{
   // リロード時のログイン状態復元
-  restoreSession();
+  const restored=restoreSession();
+  // 履歴ナビゲーションを初期化（スワイプ／戻るボタン対応）
+  initNavigation();
+  // URLハッシュの画面を復元（ログイン済みの場合のみ）
+  if(restored){
+    const hash=(location.hash||'').replace('#','').split('/')[0];
+    if(hash && document.getElementById('s-'+hash)){
+      _navSuppress=true;
+      try{ _applyScreen(hash); replaceNavState({screen:hash}); }
+      finally{ _navSuppress=false; }
+    }
+  }
   return fetchAndRenderProps().then(()=>{
     const el=document.getElementById('lp-stat-props');
     if(el) el.textContent=PROPS.length+'件';

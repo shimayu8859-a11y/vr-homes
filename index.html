@@ -495,6 +495,30 @@
             <button class="btn" style="padding:9px 22px;font-size:13px;color:var(--red)">アカウント削除</button>
           </div>
         </div>
+
+        <!-- パスワード変更 -->
+        <h2 style="font-size:18px;font-weight:800;margin:28px 0 20px;color:var(--navy)">パスワード変更</h2>
+        <div class="card" style="max-width:500px">
+          <p style="font-size:12px;color:#64748b;margin-bottom:16px;line-height:1.7">
+            現在のパスワードを確認したうえで、新しいパスワードに変更します。
+          </p>
+          <div class="field">
+            <div class="flabel">現在のパスワード <span class="req">*</span></div>
+            <input class="finput" id="pc-current" type="password" placeholder="現在のパスワード" onkeydown="handleFormKey(event,'pc-new')">
+          </div>
+          <div class="field">
+            <div class="flabel">新しいパスワード（6文字以上） <span class="req">*</span></div>
+            <input class="finput" id="pc-new" type="password" placeholder="新しいパスワード" onkeydown="handleFormKey(event,'pc-new2')">
+          </div>
+          <div class="field">
+            <div class="flabel">新しいパスワード（確認） <span class="req">*</span></div>
+            <input class="finput" id="pc-new2" type="password" placeholder="もう一度入力" onkeydown="if(event.key==='Enter')changeMyPassword()">
+          </div>
+          <div id="pc-msg" style="display:none;border-radius:var(--r-md);padding:9px 13px;font-size:13px;margin-bottom:14px"></div>
+          <button class="btn btn-p" style="padding:9px 22px;font-size:13px" onclick="changeMyPassword()">
+            <i class="ti ti-lock"></i> パスワードを変更
+          </button>
+        </div>
       </div>
       <div id="mp-wish" style="display:none">
         <h2 style="font-size:18px;font-weight:800;margin-bottom:20px;color:var(--navy)">希望条件</h2>

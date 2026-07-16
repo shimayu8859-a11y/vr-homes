@@ -1283,6 +1283,20 @@ function showUserDetail(email){
         <i class="ti ti-send"></i> 送信する
       </button>
     </div>
+    ${isMaster()&&u.role!=='master'?`
+    <!-- パスワード代理リセット（マスター専用） -->
+    <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:var(--r-md);padding:14px;margin-bottom:12px">
+      <div style="font-size:11px;font-weight:700;color:#dc2626;margin-bottom:6px"><i class="ti ti-key"></i> パスワードを代理リセット</div>
+      <p style="font-size:11px;color:#991b1b;margin-bottom:10px;line-height:1.6">
+        ユーザーがパスワードを忘れた場合に、マスターが新しいパスワードを設定できます。設定後、本人に直接お伝えください。
+      </p>
+      <input class="finput" id="ud-new-pass" type="text" placeholder="新しいパスワード（6文字以上）" style="font-size:12px;margin-bottom:6px">
+      <input class="finput" id="ud-master-pass" type="password" placeholder="あなた（マスター）のパスワード" style="font-size:12px;margin-bottom:8px">
+      <div id="ud-reset-status" style="display:none;font-size:11px;margin-bottom:6px"></div>
+      <button class="btn btn-sm" style="width:100%;justify-content:center;color:var(--red);border-color:var(--red-b)" onclick="adminResetPassword('${email}')">
+        <i class="ti ti-key"></i> パスワードをリセット
+      </button>
+    </div>`:''}
     ${u.role!=='master'?`<div style="background:var(--surface2);border-radius:var(--r-md);padding:14px;margin-bottom:12px">
       <div style="font-size:11px;font-weight:700;color:#64748b;margin-bottom:8px">ロール変更</div>
       <div style="display:flex;gap:8px">
@@ -1320,6 +1334,87 @@ async function sendMailToUser(email){
   setTimeout(()=>{if(status) status.style.display='none';},3000);
 }
 window.sendMailToUser=sendMailToUser;
+
+/* マスターによる代理パスワードリセット */
+async function adminResetPassword(targetEmail){
+  const newPass=(document.getElementById('ud-new-pass')||{}).value?.trim()||'';
+  const masterPass=(document.getElementById('ud-master-pass')||{}).value||'';
+  const status=document.getElementById('ud-reset-status');
+  const show=(t,ok)=>{if(status){status.style.cssText=`display:block;font-size:11px;margin-bottom:6px;color:${ok?'var(--green)':'var(--red)'}`;status.textContent=t;}};
+  if(!newPass){show('新しいパスワードを入力してください',false);return;}
+  if(newPass.length<6){show('パスワードは6文字以上で入力してください',false);return;}
+  if(!masterPass){show('あなた（マスター）のパスワードを入力してください',false);return;}
+  if(!isMaster()){show('マスター権限が必要です',false);return;}
+  if(!AWS_API_URL){show('サーバーに接続できません',false);return;}
+  if(!confirm(`「${targetEmail}」のパスワードをリセットしますか？\n\n新しいパスワード: ${newPass}\n\n※このパスワードを本人にお伝えください。`)) return;
+  show('リセット中...',true);
+  try{
+    const res=await fetch(AWS_API_URL+'?action=adminResetPassword',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        targetEmail, newPassword:newPass,
+        masterEmail:currentUser.email, masterPassword:masterPass
+      })
+    });
+    const d=await res.json().catch(()=>({}));
+    if(!res.ok){ show(d.error||'リセットに失敗しました',false); return; }
+    if(!d.success){ show('リセットに失敗しました',false); return; }
+    show('✓ パスワードをリセットしました。本人にお伝えください',true);
+    const np=document.getElementById('ud-new-pass');if(np) np.value='';
+    const mp=document.getElementById('ud-master-pass');if(mp) mp.value='';
+    // サイト内メールでも通知
+    saveMessage({
+      id:'m'+Date.now(), to:targetEmail, from:currentUser.email, fromName:currentUser.name||'運営',
+      subject:'【VR Homes】パスワードが再設定されました',
+      body:'管理者によりパスワードが再設定されました。新しいパスワードは管理者からお受け取りください。\nログイン後、マイページから任意のパスワードに変更できます。',
+      time:new Date().toISOString(), read:false
+    });
+  }catch(e){
+    show('通信エラーが発生しました',false);
+  }
+}
+window.adminResetPassword=adminResetPassword;
+
+/* 自分のパスワードを変更（ログイン中の本人） */
+async function changeMyPassword(){
+  const cur=(document.getElementById('pc-current')||{}).value||'';
+  const np=(document.getElementById('pc-new')||{}).value||'';
+  const np2=(document.getElementById('pc-new2')||{}).value||'';
+  const msg=document.getElementById('pc-msg');
+  const show=(t,ok)=>{
+    if(!msg) return;
+    msg.style.cssText=`display:block;background:${ok?'var(--green-l)':'rgba(220,38,38,.08)'};border:1px solid ${ok?'#86efac':'#fecaca'};color:${ok?'var(--green)':'var(--red)'};border-radius:var(--r-md);padding:9px 13px;font-size:13px;margin-bottom:14px`;
+    msg.textContent=t;
+  };
+  if(!currentUser){show('ログインしてください',false);return;}
+  if(!cur||!np||!np2){show('すべての項目を入力してください',false);return;}
+  if(np.length<6){show('新しいパスワードは6文字以上で入力してください',false);return;}
+  if(np!==np2){show('新しいパスワードが一致しません',false);return;}
+  if(cur===np){show('現在のパスワードと同じです',false);return;}
+
+  // デモ・マスターなどフロント定数アカウントはサーバーに無いので変更不可
+  const isLocalOnly=[DEMO_USER,DEMO_ADMIN,MASTER_USER].some(u=>u.email===currentUser.email);
+  if(isLocalOnly){
+    show('デモアカウントのパスワードは変更できません',false);return;
+  }
+  if(!AWS_API_URL){show('サーバーに接続できません',false);return;}
+  show('変更中...',true);
+  try{
+    const res=await fetch(AWS_API_URL+'?action=changePassword',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({email:currentUser.email, currentPassword:cur, newPassword:np})
+    });
+    const d=await res.json().catch(()=>({}));
+    if(!res.ok){ show(d.error||'変更に失敗しました',false); return; }
+    if(!d.success){ show('変更に失敗しました',false); return; }
+    show('✓ パスワードを変更しました',true);
+    ['pc-current','pc-new','pc-new2'].forEach(id=>{const el=document.getElementById(id);if(el) el.value='';});
+    setTimeout(()=>{if(msg) msg.style.display='none';},4000);
+  }catch(e){
+    show('通信エラーが発生しました',false);
+  }
+}
+window.changeMyPassword=changeMyPassword;
 function closeUserDetail(){document.getElementById('user-detail-modal').style.display='none';}
 function changeRoleFromDetail(email){
   const role=document.getElementById('user-detail-role').value;

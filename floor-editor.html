@@ -2397,7 +2397,9 @@ function setOpeningWidth(roomIdx, openingIdx, val){
   if(isNaN(w)) return;
   w = Math.max(0.3, Math.min(5.0, w));
   rooms[roomIdx].openings[openingIdx].width = w;
-  draw(); rebuild3D(); renderRoomList();
+  /* 一覧は描き直さない。描き直すと入力欄が作り直され、
+     上下ボタンを連打できなくなる(折りたたみ・フォーカス外れの原因) */
+  draw(); rebuild3D();
   document.getElementById('status').textContent = '開口幅を変更: ' + w.toFixed(2) + 'm';
 }
 
@@ -3173,7 +3175,17 @@ function toggleColorPalette(roomIdx, ev){
     document.addEventListener('mousedown', closeHandler);
   }, 0);
 }
-function toggleRoomExpand(i){var el=document.getElementById('room-detail-'+i);if(el)el.style.display=el.style.display==='none'?'block':'none';}
+/* どの部屋の詳細を開いているかを保持する。
+   これを持たないと、値を変更して一覧を描き直すたびに折りたたまれてしまう */
+var expandedRooms={};
+function toggleRoomExpand(i){
+  var el=document.getElementById('room-detail-'+i);
+  if(!el || !rooms[i]) return;
+  var key=rooms[i].id;
+  var open=(el.style.display==='none');
+  el.style.display=open?'block':'none';
+  if(open) expandedRooms[key]=true; else delete expandedRooms[key];
+}
 function renderRoomList(){
   var p=document.getElementById('roomList');
   if(!p)return;
@@ -3195,7 +3207,7 @@ function renderRoomList(){
         +'<button onclick="event.stopPropagation();removeRoom('+i+')" style="border:none;background:none;color:#c0392b;cursor:pointer;font-size:11px;padding:0 4px;margin-left:auto">✕</button>'
         +'</div>';
       if(openings.length>0){
-        html+='<div id="room-detail-'+i+'" style="display:none;background:#f9f9f9;padding:2px 8px 4px 20px">';
+        html+='<div id="room-detail-'+i+'" style="display:'+(expandedRooms[r.id]?'block':'none')+';background:#f9f9f9;padding:2px 8px 4px 20px">';
         openings.forEach(function(o,j){
           var typeLabel = o.type==='door'?'🚪' : o.type==='passage'?'🚧' : '🪟';
           var wallLabel=(o.edgeIndex!==undefined)?('辺'+(o.edgeIndex+1)):o.wall;
@@ -3217,7 +3229,7 @@ function renderRoomList(){
           }
           /* 幅入力ボックス(全タイプ共通) */
           var widthInput = ' 幅:<input type="number" min="0.3" max="5.0" step="0.1" value="'+(o.width||0.9).toFixed(2)+'" '
-            +'onchange="setOpeningWidth('+i+','+j+',this.value)" '
+            +'oninput="setOpeningWidth('+i+','+j+',this.value)" onclick="event.stopPropagation()" '
             +'style="font-size:10px;padding:1px 3px;width:48px;border:1px solid #ccc;border-radius:3px" title="幅(m)">m';
           html+='<div style="display:flex;align-items:center;gap:4px;padding:2px 0;font-size:10px;color:#555">'
             +typeLabel+' '+wallLabel+' ('+posLabel+')'

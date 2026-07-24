@@ -148,7 +148,7 @@ canvas.map-canvas{display:block;position:absolute;top:0;left:0;width:100%;height
   <button class="btn" id="modeFurniture" onclick="setMode('furniture')">🛋 家具</button>
   <button class="btn" id="modePan" onclick="setMode('pan')">✋ 移動</button>
   <button class="btn" id="modeBg" onclick="setMode('bg')" style="display:none">🖼 背景調整</button>
-  <button class="btn" id="modeScale" onclick="setMode('scale')">📐 全体サイズ</button>
+  <button class="btn" id="modeScale" onclick="setMode('scale')">📐 全体調整</button>
   <button class="btn" onclick="clearAll()">🗑</button>
   <button class="btn primary" onclick="sendData()">▶ Unity送信</button>
   <!-- 背景写真コントロール -->
@@ -264,15 +264,23 @@ canvas.map-canvas{display:block;position:absolute;top:0;left:0;width:100%;height
       </div>
       <!-- 全体サイズ調整用の floating バー -->
       <div class="bg-transform-bar" id="scaleTransformBar">
-        <span class="bt-hint">全体サイズ:</span>
+        <span class="bt-hint">全体調整:</span>
         <input type="range" id="globalScaleSlider" min="10" max="500" value="100">
         <input type="number" id="globalScaleInput" min="10" max="500" step="1" value="100"
                style="width:54px;padding:2px 4px;font-size:11px;border:1px solid #ddd;border-radius:4px;text-align:center">
         <span class="bt-label">%</span>
         <div class="bt-divider"></div>
+        <span class="bt-hint">位置</span>
+        <button onclick="nudgeGlobal(0,-0.25)" title="上へ 0.25m">↑</button>
+        <button onclick="nudgeGlobal(0,0.25)" title="下へ 0.25m">↓</button>
+        <button onclick="nudgeGlobal(-0.25,0)" title="左へ 0.25m">←</button>
+        <button onclick="nudgeGlobal(0.25,0)" title="右へ 0.25m">→</button>
+        <span class="bt-label" id="gMoveLabel" style="min-width:104px">X 0.00 / Y 0.00 m</span>
+        <button onclick="resetGlobalMove()">↺ 位置のみ</button>
+        <div class="bt-divider"></div>
         <button onclick="resetGlobalScale()">↺ リセット</button>
         <div class="bt-divider"></div>
-        <span class="bt-hint">部屋・壁・家具を一括で拡縮</span>
+        <span class="bt-hint">キャンバスをドラッグでも移動 / 部屋・壁・家具を一括で拡縮</span>
       </div>
     </div>
     <div class="furniture-panel" id="furniturePanel" style="display:none">
@@ -1064,6 +1072,17 @@ document.addEventListener('keydown',function(e){
     if(s) s._origText=s.textContent, s.textContent='⚡ 精密モード(Shift): スナップ無効中 / 頂点モード時は右クリックで軸ロック';
     if(mode==='vertex' && vertices.length>0) draw();
   }
+  /* ━━━ 全体サイズモード: 矢印キーで全体を移動(Shiftで細かく) ━━━ */
+  if(mode==='scale' && scaleModeOrig &&
+     (e.key==='ArrowUp'||e.key==='ArrowDown'||e.key==='ArrowLeft'||e.key==='ArrowRight')){
+    e.preventDefault();
+    var step=e.shiftKey?0.05:0.25;
+    if(e.key==='ArrowUp')    nudgeGlobal(0,-step);
+    if(e.key==='ArrowDown')  nudgeGlobal(0, step);
+    if(e.key==='ArrowLeft')  nudgeGlobal(-step,0);
+    if(e.key==='ArrowRight') nudgeGlobal( step,0);
+    return;
+  }
   if(e.key==='Enter'&&mode==='vertex'&&vertices.length>=3){confirmVertex();}
   if(e.key==='Escape'&&mode==='vertex'){vertices=[];draw();updateUndoFab();document.getElementById('status').textContent='キャンセルしました';}
   /* ━━━ 頂点入力中: Backspace / Ctrl+Z で直前の頂点を1つ取り消し ━━━ */
@@ -1141,7 +1160,7 @@ function setMode(m){
     bg:'背景調整モード: ドラッグで移動 / ホイールで拡縮 / 下のバーで微調整',
     autowall:'壁の自動抽出: ドラッグで範囲を限定(省略時は全体)/ 下のバーで調整 → 「✓ 追加」で確定',
     roomfill:'部屋の自動取得: 部屋の内側をクリック → 「✓ 追加」で確定',
-    scale:'全体サイズモード: スライダーで部屋・壁・家具を一括で拡縮'
+    scale:'全体調整: ドラッグ/矢印キーで全体を移動、スライダーで拡縮(Shiftで細かく)'
   };
   document.getElementById('status').textContent=hints[m]||'';
   document.getElementById('furniturePanel').style.display=m==='furniture'?'flex':'none';
@@ -1623,6 +1642,14 @@ canvas.addEventListener('mousedown',function(e){
     return;
   }
   /* ━━━ 部屋の自動取得: クリックで塗り広げ ━━━ */
+  /* ━━━ 全体サイズモード: ドラッグで間取り全体を移動 ━━━ */
+  if(mode==='scale' && scaleModeOrig){
+    gDragging=true;
+    gDragStartWX=w.x; gDragStartWY=w.y;
+    gDragOrigDX=gDX;  gDragOrigDY=gDY;
+    wrap.style.cursor='grabbing';
+    return;
+  }
   if(mode==='roomfill'){
     pickRoomAt(w.x,w.y);
     return;
@@ -1712,6 +1739,15 @@ canvas.addEventListener('mousemove',function(e){
   rawMouseX=mx;rawMouseY=my;
   if(isPanning){offsetX=panOriginX+(mx-panStartX);offsetY=panOriginY+(my-panStartY);draw();return;}
   var w=toWorld(mx,my);
+  /* ━━━ 全体サイズモード: ドラッグで全体を移動 ━━━ */
+  if(gDragging){
+    var ddx=w.x-gDragStartWX, ddy=w.y-gDragStartWY;
+    /* 通常はグリッドに吸着。Shift 押下中は自由移動 */
+    if(!shiftHeld){ ddx=snapWorld(ddx); ddy=snapWorld(ddy); }
+    gDX=gDragOrigDX+ddx; gDY=gDragOrigDY+ddy;
+    applyGlobalTransform();
+    return;
+  }
   /* ━━━ 壁の自動抽出: 範囲ドラッグ中 ━━━ */
   if(awDragging && awRegion){
     awRegion.x2=w.x; awRegion.y2=w.y;
@@ -1817,6 +1853,12 @@ canvas.addEventListener('mouseleave',function(){
   if(openingPreview){ openingPreview=null; draw(); }
 });
 canvas.addEventListener('mouseup',function(e){
+  if(gDragging){
+    gDragging=false;
+    wrap.style.cursor='crosshair';
+    document.getElementById('status').textContent='全体を移動: X '+(gDX/BASE_SCALE).toFixed(2)+'m / Y '+(gDY/BASE_SCALE).toFixed(2)+'m';
+    return;
+  }
   if(isPanning){isPanning=false;wrap.style.cursor=mode==='pan'?'grab':'crosshair';return;}
   /* ━━━ 壁の自動抽出: 範囲ドラッグ終了 → その範囲で再検出 ━━━ */
   if(awDragging){
@@ -3037,9 +3079,11 @@ function enterScaleMode(){
     walls: JSON.parse(JSON.stringify(walls)),
     furnitures: JSON.parse(JSON.stringify(furnitures))
   };
-  /* スライダーを 100% にリセット */
+  /* スライダーと移動量を初期状態に戻す */
+  gScale=1; gDX=0; gDY=0;
   var sl=document.getElementById('globalScaleSlider'); if(sl) sl.value=100;
   var inp=document.getElementById('globalScaleInput'); if(inp) inp.value=100;
+  updateMoveLabel();
 }
 
 /* スケールモード退出時:現在の状態を確定(バックアップ破棄) */
@@ -3048,28 +3092,32 @@ function commitScaleMode(){
 }
 
 /* スライダー操作:元データを基準に倍率 s で全要素を再計算 */
-function applyGlobalScale(s){
+/* 現在の倍率と移動量。スライダー・ドラッグの結果をここに集約し、
+   元データ(scaleModeOrig)から毎回まとめて計算し直す */
+var gScale=1, gDX=0, gDY=0;
+var gDragging=false, gDragStartWX=0, gDragStartWY=0, gDragOrigDX=0, gDragOrigDY=0;
+
+function applyGlobalScale(s){ gScale=s; applyGlobalTransform(); }
+
+/* 元データを基準に「中心固定で s 倍 → (dx,dy) 平行移動」をまとめて適用 */
+function applyGlobalTransform(){
   if(!scaleModeOrig) return;
-  var ax=scaleModeAnchor.x, ay=scaleModeAnchor.y;
+  var s=gScale, ax=scaleModeAnchor.x, ay=scaleModeAnchor.y, dx=gDX, dy=gDY;
+  function tx(x){ return ax + (x-ax)*s + dx; }
+  function ty(y){ return ay + (y-ay)*s + dy; }
   /* 部屋 */
   rooms = JSON.parse(JSON.stringify(scaleModeOrig.rooms));
   rooms.forEach(function(r){
     if(r.vertices){
-      r.vertices.forEach(function(v){
-        v.x = ax + (v.x - ax) * s;
-        v.y = ay + (v.y - ay) * s;
-      });
+      r.vertices.forEach(function(v){ v.x=tx(v.x); v.y=ty(v.y); });
       /* wx/wy/ww/wh を再計算 */
       var minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
       r.vertices.forEach(function(v){minX=Math.min(minX,v.x);minY=Math.min(minY,v.y);maxX=Math.max(maxX,v.x);maxY=Math.max(maxY,v.y);});
       r.wx=minX; r.wy=minY; r.ww=maxX-minX; r.wh=maxY-minY;
     } else {
-      r.wx = ax + (r.wx - ax) * s;
-      r.wy = ay + (r.wy - ay) * s;
-      r.ww *= s;
-      r.wh *= s;
+      r.wx=tx(r.wx); r.wy=ty(r.wy);
+      r.ww*=s; r.wh*=s;
     }
-    /* 開口の幅もスケール(物理サイズ) */
     if(r.openings){
       /* 幅だけスケール。高さは天井高(2.4m固定)との関係が壊れ、
          ドア上のまぐさが消えて天井まで繋がってしまうため変更しない */
@@ -3079,26 +3127,47 @@ function applyGlobalScale(s){
   /* 壁 */
   walls = JSON.parse(JSON.stringify(scaleModeOrig.walls));
   walls.forEach(function(w){
-    w.x1 = ax + (w.x1 - ax) * s;
-    w.y1 = ay + (w.y1 - ay) * s;
-    w.x2 = ax + (w.x2 - ax) * s;
-    w.y2 = ay + (w.y2 - ay) * s;
+    w.x1=tx(w.x1); w.y1=ty(w.y1);
+    w.x2=tx(w.x2); w.y2=ty(w.y2);
   });
   /* 家具 */
   furnitures = JSON.parse(JSON.stringify(scaleModeOrig.furnitures));
   furnitures.forEach(function(f){
-    f.cx = ax + (f.cx - ax) * s;
-    f.cy = ay + (f.cy - ay) * s;
-    if(f.pw) f.pw *= s; if(f.ph) f.ph *= s;
-    if(f.w) f.w *= s; if(f.d) f.d *= s; if(f.h) f.h *= s;
+    f.cx=tx(f.cx); f.cy=ty(f.cy);
+    if(f.pw) f.pw*=s; if(f.ph) f.ph*=s;
+    if(f.w) f.w*=s; if(f.d) f.d*=s; if(f.h) f.h*=s;
   });
   draw(); rebuild3D(); renderRoomList();
+  updateMoveLabel();
 }
 
-/* スライダーリセット(100% に戻す) */
+/* 矢印ボタン・キーボードで少しずつ動かす(単位: m) */
+function nudgeGlobal(mx,my){
+  if(!scaleModeOrig) return;
+  gDX += mx*BASE_SCALE;
+  gDY += my*BASE_SCALE;
+  applyGlobalTransform();
+  document.getElementById('status').textContent='全体を移動: X '+(gDX/BASE_SCALE).toFixed(2)+'m / Y '+(gDY/BASE_SCALE).toFixed(2)+'m';
+}
+
+/* 移動量の表示を更新 */
+function updateMoveLabel(){
+  var el=document.getElementById('gMoveLabel');
+  if(el) el.textContent='X '+(gDX/BASE_SCALE).toFixed(2)+' / Y '+(gDY/BASE_SCALE).toFixed(2)+' m';
+}
+
+/* 移動だけリセット */
+function resetGlobalMove(){
+  if(!scaleModeOrig) return;
+  gDX=0; gDY=0; applyGlobalTransform();
+  document.getElementById('status').textContent='移動をリセットしました';
+}
+
+/* スライダーリセット(100% + 移動なしに戻す) */
 function resetGlobalScale(){
   if(!scaleModeOrig) return;
-  applyGlobalScale(1.0);
+  gScale=1; gDX=0; gDY=0;
+  applyGlobalTransform();
   var sl=document.getElementById('globalScaleSlider'); if(sl) sl.value=100;
   var inp=document.getElementById('globalScaleInput'); if(inp) inp.value=100;
 }

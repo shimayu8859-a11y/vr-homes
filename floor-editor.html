@@ -83,6 +83,7 @@ canvas.map-canvas{display:block;position:absolute;top:0;left:0;width:100%;height
 .bg-controls input[type=range]{width:60px}
 .bg-controls .file-btn{padding:4px 8px;font-size:11px;border-radius:4px;border:1px solid #ddd;background:#fff;cursor:pointer;white-space:nowrap}
 .bg-controls .file-btn:hover{background:#f0f0f0}
+.bg-controls .file-btn.active{background:var(--blue-light);border-color:var(--blue);color:var(--blue);font-weight:600}
 .bg-controls .bg-label{font-size:10px;color:#888}
 .bg-controls .bg-clear{padding:2px 6px;font-size:11px;border-radius:4px;border:1px solid #ddd;background:#fff;cursor:pointer;color:#c0392b}
 /* ━━━ 埋め込みモード用の保存バー(初期非表示) ━━━ */
@@ -158,6 +159,10 @@ canvas.map-canvas{display:block;position:absolute;top:0;left:0;width:100%;height
     </label>
     <span class="bg-label" id="bgOpacityLabel" style="display:none">50%</span>
     <input type="range" id="bgOpacity" min="0" max="100" value="50" style="display:none">
+    <button class="file-btn" id="bgRoomFill" style="display:none" onclick="setMode('roomfill')"
+            title="壁で囲まれた領域を塗り広げて、部屋のポリゴンを一発で作ります">🏠 部屋を取得</button>
+    <button class="file-btn" id="bgAutoWall" style="display:none" onclick="setMode('autowall')"
+            title="背景の間取り図から、太くて濃い線=壁を自動で読み取ります">🪄 壁を自動抽出</button>
     <button class="bg-clear" id="bgClear" style="display:none">✕</button>
   </div>
   <button class="btn" id="toggle3D" onclick="toggle3DPanel()" style="margin-left:auto">🧊 3Dビュー</button>
@@ -199,6 +204,63 @@ canvas.map-canvas{display:block;position:absolute;top:0;left:0;width:100%;height
         <button onclick="fitBgToCanvas()">⛶ 中央フィット</button>
         <div class="bt-divider"></div>
         <span class="bt-hint">ドラッグで移動 / ホイールで拡縮</span>
+      </div>
+      <!-- 部屋の自動取得バー -->
+      <div class="bg-transform-bar" id="roomFillBar">
+        <span class="bt-hint">🏠 部屋取得:</span>
+        <span>濃さ</span>
+        <input type="range" id="rfThreshold" min="20" max="220" value="110" style="width:60px">
+        <span class="bt-label" id="rfThresholdLabel">110</span>
+        <div class="bt-divider"></div>
+        <span>彩度</span>
+        <input type="range" id="rfSat" min="0" max="255" value="60" style="width:50px">
+        <span class="bt-label" id="rfSatLabel">60</span>
+        <div class="bt-divider"></div>
+        <span>開口を塞ぐ</span>
+        <input type="number" id="rfClose" min="0" max="3" step="0.1" value="1.0" style="width:48px"
+               title="この幅までの開口(ドアなど)を仮に塞いでから塗ります">
+        <span>m</span>
+        <div class="bt-divider"></div>
+        <span>壁の中心まで</span>
+        <input type="number" id="rfOffset" min="0" max="0.5" step="0.01" value="0.06" style="width:48px"
+               title="部屋の輪郭を壁の中心まで広げます。隣の部屋と辺を共有させるため">
+        <span>m</span>
+        <div class="bt-divider"></div>
+        <label style="display:flex;align-items:center;gap:3px;cursor:pointer">
+          <input type="checkbox" id="rfOrtho" checked>直角に整える
+        </label>
+        <div class="bt-divider"></div>
+        <button onclick="commitRoomFill()" style="font-weight:700">✓ 追加</button>
+        <button onclick="clearRoomFill()">↺ クリア</button>
+        <span class="bt-hint" id="rfHint">部屋の内側をクリックしてください</span>
+      </div>
+      <!-- 壁の自動抽出バー -->
+      <div class="bg-transform-bar" id="autoWallBar">
+        <span class="bt-hint">🪄 壁抽出:</span>
+        <span>濃さ</span>
+        <input type="range" id="awThreshold" min="20" max="220" value="110" style="width:70px">
+        <span class="bt-label" id="awThresholdLabel">110</span>
+        <button onclick="autoThresholdOtsu()" title="画像のヒストグラムから濃さを自動判定">自動</button>
+        <div class="bt-divider"></div>
+        <span>彩度</span>
+        <input type="range" id="awSat" min="0" max="255" value="60" style="width:56px"
+               title="これより色みが強いピクセルは壁とみなしません(茶色の建具・青の水回りを除外)">
+        <span class="bt-label" id="awSatLabel">60</span>
+        <div class="bt-divider"></div>
+        <span>壁の厚み</span>
+        <input type="number" id="awMinTh" min="0.01" max="1" step="0.01" value="0.06" style="width:52px" title="これより薄い線は無視(m)">
+        <span>〜</span>
+        <input type="number" id="awMaxTh" min="0.02" max="2" step="0.01" value="0.40" style="width:52px" title="これより厚い塗りは無視(m)">
+        <span>m</span>
+        <div class="bt-divider"></div>
+        <span>最短</span>
+        <input type="number" id="awMinLen" min="0.1" max="10" step="0.1" value="0.6" style="width:52px" title="これより短い線は無視(m)">
+        <span>m</span>
+        <div class="bt-divider"></div>
+        <button onclick="runAutoWall()">🔍 再検出</button>
+        <button onclick="commitAutoWalls()" style="font-weight:700">✓ 追加</button>
+        <button onclick="clearAutoWallRegion()">↺ 範囲解除</button>
+        <span class="bt-hint" id="awHint">ドラッグで範囲を限定できます</span>
       </div>
       <!-- 全体サイズ調整用の floating バー -->
       <div class="bg-transform-bar" id="scaleTransformBar">
@@ -512,6 +574,8 @@ document.getElementById('bgFile').addEventListener('change', function(e){
       document.getElementById('bgOpacity').style.display='inline-block';
       document.getElementById('bgOpacityLabel').style.display='inline-block';
       document.getElementById('modeBg').style.display='inline-flex';
+      document.getElementById('bgAutoWall').style.display='inline-block';
+      document.getElementById('bgRoomFill').style.display='inline-block';
       document.getElementById('status').textContent='背景写真を読み込みました。「🖼 背景調整」モードで位置・サイズを合わせてから、なぞって部屋を描いてください';
       /* 自動で中央フィット */
       fitBgToCanvas();
@@ -1062,7 +1126,7 @@ function setMode(m){
   mode=m;
   var btns=document.querySelectorAll('.toolbar .btn');
   for(var i=0;i<btns.length;i++)btns[i].classList.remove('active');
-  var ids={rect:'modeRect',vertex:'modeVertex',edit:'modeEdit',door:'modeDoor',window:'modeWindow',passage:'modePassage',wall:'modeWall',furniture:'modeFurniture',pan:'modePan',bg:'modeBg',scale:'modeScale'};
+  var ids={rect:'modeRect',vertex:'modeVertex',edit:'modeEdit',door:'modeDoor',window:'modeWindow',passage:'modePassage',wall:'modeWall',furniture:'modeFurniture',pan:'modePan',bg:'modeBg',scale:'modeScale',autowall:'bgAutoWall',roomfill:'bgRoomFill'};
   if(ids[m]){var el=document.getElementById(ids[m]); if(el) el.classList.add('active');}
   var hints={
     rect:'ドラッグして部屋を描く (Shiftでスナップ無効)',
@@ -1075,6 +1139,8 @@ function setMode(m){
     furniture:'家具を選んでクリック配置/ドラッグ移動/Rで回転',
     pan:'ドラッグで移動 / 中クリックドラッグで任意モードから移動 / Shift+ホイールで横 / Ctrl+ホイールで縦',
     bg:'背景調整モード: ドラッグで移動 / ホイールで拡縮 / 下のバーで微調整',
+    autowall:'壁の自動抽出: ドラッグで範囲を限定(省略時は全体)/ 下のバーで調整 → 「✓ 追加」で確定',
+    roomfill:'部屋の自動取得: 部屋の内側をクリック → 「✓ 追加」で確定',
     scale:'全体サイズモード: スライダーで部屋・壁・家具を一括で拡縮'
   };
   document.getElementById('status').textContent=hints[m]||'';
@@ -1092,6 +1158,35 @@ function setMode(m){
   } else {
     if(scaleBar.classList.contains('show')){ commitScaleMode(); }
     scaleBar.classList.remove('show');
+  }
+  /* 壁の自動抽出バー */
+  var awBar=document.getElementById('autoWallBar');
+  if(awBar){
+    if(m==='autowall'){
+      if(!bgImage){
+        document.getElementById('status').textContent='先に「📷 背景写真」で間取り図を読み込んでください';
+      } else {
+        awBar.classList.add('show');
+        runAutoWall();   // 進入時にいったん全体を検出してプレビュー
+      }
+    } else {
+      awBar.classList.remove('show');
+      autoWallPreview=null; awRegion=null;
+    }
+  }
+  /* 部屋の自動取得バー */
+  var rfBar=document.getElementById('roomFillBar');
+  if(rfBar){
+    if(m==='roomfill'){
+      if(!bgImage){
+        document.getElementById('status').textContent='先に「📷 背景写真」で間取り図を読み込んでください';
+      } else {
+        rfBar.classList.add('show');
+      }
+    } else {
+      rfBar.classList.remove('show');
+      roomFillPreview=[];
+    }
   }
   /* ドアモード時だけドア種類サブツールバーを表示 */
   var doorSub=document.getElementById('doorSubtoolbar');
@@ -1527,6 +1622,18 @@ canvas.addEventListener('mousedown',function(e){
     }
     return;
   }
+  /* ━━━ 部屋の自動取得: クリックで塗り広げ ━━━ */
+  if(mode==='roomfill'){
+    pickRoomAt(w.x,w.y);
+    return;
+  }
+  /* ━━━ 壁の自動抽出モード: ドラッグで抽出範囲を指定 ━━━ */
+  if(mode==='autowall'){
+    awDragging=true;
+    awRegion={x1:w.x, y1:w.y, x2:w.x, y2:w.y};
+    draw();
+    return;
+  }
   /* ━━━ 壁モード: クリックで点を打って独立壁を作る ━━━ */
   if(mode==='wall'){
     var nxW=snapWorld(w.x), nyW=snapWorld(w.y);
@@ -1605,6 +1712,12 @@ canvas.addEventListener('mousemove',function(e){
   rawMouseX=mx;rawMouseY=my;
   if(isPanning){offsetX=panOriginX+(mx-panStartX);offsetY=panOriginY+(my-panStartY);draw();return;}
   var w=toWorld(mx,my);
+  /* ━━━ 壁の自動抽出: 範囲ドラッグ中 ━━━ */
+  if(awDragging && awRegion){
+    awRegion.x2=w.x; awRegion.y2=w.y;
+    draw();
+    return;
+  }
   /* ━━━ 背景調整モード: ドラッグ中の移動 ━━━ */
   if(isDraggingBg){
     bgX = bgDragOriginX + (w.x - bgDragStartWX);
@@ -1705,6 +1818,15 @@ canvas.addEventListener('mouseleave',function(){
 });
 canvas.addEventListener('mouseup',function(e){
   if(isPanning){isPanning=false;wrap.style.cursor=mode==='pan'?'grab':'crosshair';return;}
+  /* ━━━ 壁の自動抽出: 範囲ドラッグ終了 → その範囲で再検出 ━━━ */
+  if(awDragging){
+    awDragging=false;
+    if(awRegion && (Math.abs(awRegion.x2-awRegion.x1)<8 || Math.abs(awRegion.y2-awRegion.y1)<8)){
+      awRegion=null;   // ほぼクリック = 範囲指定を解除
+    }
+    runAutoWall();
+    return;
+  }
   /* ━━━ 背景ドラッグ終了 ━━━ */
   if(isDraggingBg){isDraggingBg=false;wrap.style.cursor='move';return;}
   /* ━━━ 編集モード: 頂点ドラッグ終了 ━━━ */
@@ -2080,6 +2202,47 @@ function draw(){
   }
   /* ━━━ ドア/窓/通路 設置プレビュー(半透明) ━━━ */
   if(openingPreview) drawOpeningPreview(openingPreview);
+  /* ━━━ 部屋の自動取得: 選択中の部屋のプレビュー ━━━ */
+  if(mode==='roomfill' && roomFillPreview.length){
+    roomFillPreview.forEach(function(rp){
+      if(rp.verts.length<3) return;
+      ctx.beginPath();
+      ctx.moveTo(rp.verts[0].x,rp.verts[0].y);
+      for(var i=1;i<rp.verts.length;i++) ctx.lineTo(rp.verts[i].x,rp.verts[i].y);
+      ctx.closePath();
+      ctx.fillStyle='rgba(249,115,22,0.28)';
+      ctx.fill();
+      ctx.strokeStyle='#F97316'; ctx.lineWidth=2.5/scale;
+      ctx.stroke();
+      rp.verts.forEach(function(v){
+        ctx.beginPath();ctx.arc(v.x,v.y,3/scale,0,Math.PI*2);
+        ctx.fillStyle='#F97316';ctx.fill();
+      });
+    });
+  }
+  /* ━━━ 壁の自動抽出: 範囲と検出結果のプレビュー ━━━ */
+  if(mode==='autowall'){
+    if(awRegion){
+      var ax=Math.min(awRegion.x1,awRegion.x2), ay=Math.min(awRegion.y1,awRegion.y2);
+      var aw=Math.abs(awRegion.x2-awRegion.x1), ah=Math.abs(awRegion.y2-awRegion.y1);
+      ctx.fillStyle='rgba(24,95,165,0.08)';
+      ctx.fillRect(ax,ay,aw,ah);
+      ctx.strokeStyle='#185FA5'; ctx.lineWidth=1.5/scale;
+      ctx.setLineDash([6/scale,4/scale]);
+      ctx.strokeRect(ax,ay,aw,ah);
+      ctx.setLineDash([]);
+    }
+    if(autoWallPreview){
+      ctx.strokeStyle='#F97316';   // オレンジ = これから追加される壁
+      ctx.lineWidth=5/scale;
+      ctx.lineCap='round';
+      ctx.globalAlpha=0.75;
+      autoWallPreview.forEach(function(s){
+        ctx.beginPath();ctx.moveTo(s.x1,s.y1);ctx.lineTo(s.x2,s.y2);ctx.stroke();
+      });
+      ctx.globalAlpha=1;
+    }
+  }
   ctx.restore();
 }
 
@@ -2238,6 +2401,594 @@ function setOpeningWidth(roomIdx, openingIdx, val){
   document.getElementById('status').textContent = '開口幅を変更: ' + w.toFixed(2) + 'm';
 }
 
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   背景の間取り図から「壁」を自動抽出する
+   考え方: 間取り図の壁は「濃い + ある程度の厚みがある + 長い」直線。
+   1) 画像を二値化(暗いピクセル=壁候補)
+   2) 各列の縦ラン長が「壁の厚み」の範囲に入るものを拾い、横につないで横壁に
+   3) 各行の横ランで同様に縦壁に
+   文字・寸法線・家具の細線は「厚み不足」で、ベタ塗りは「厚すぎ」で自然に除外される
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+var autoWallPreview=null;  // 抽出結果(ワールド座標の配列)
+var awRegion=null;         // 抽出範囲(ワールド座標)null=全体
+var awDragging=false;
+
+/* 検出を実行してプレビューに入れる */
+function runAutoWall(){
+  if(!bgImage){ return; }
+  var t0=performance.now();
+  autoWallPreview=detectWallsFromBg();
+  var ms=Math.round(performance.now()-t0);
+  var hint=document.getElementById('awHint');
+  if(hint) hint.textContent=autoWallPreview.length+'本を検出 ('+ms+'ms) / ドラッグで範囲を限定できます';
+  document.getElementById('status').textContent='壁を '+autoWallPreview.length+'本 検出しました。よければ「✓ 追加」';
+  draw();
+}
+
+/* 抽出範囲をクリア */
+function clearAutoWallRegion(){
+  awRegion=null;
+  runAutoWall();
+}
+
+/* プレビューを実際の壁として確定 */
+function commitAutoWalls(){
+  if(!autoWallPreview || autoWallPreview.length===0){
+    document.getElementById('status').textContent='追加できる壁がありません';
+    return;
+  }
+  autoWallPreview.forEach(function(s){
+    walls.push({id:nextWallId++, x1:s.x1, y1:s.y1, x2:s.x2, y2:s.y2});
+  });
+  var n=autoWallPreview.length;
+  autoWallPreview=null; awRegion=null;
+  draw();rebuild3D();renderRoomList();updateUndoFab();
+  document.getElementById('status').textContent=n+'本の壁を追加しました。不要なものは一覧の ✕ で削除できます';
+  var hint=document.getElementById('awHint');
+  if(hint) hint.textContent='追加しました / 続けて別の範囲も抽出できます';
+}
+
+/* 解析用の画像データを取得(縮小してオフスクリーンへ描画)。キャッシュする。 */
+var awImgCache=null;
+function getBgAnalysisImage(){
+  if(awImgCache && awImgCache.img===bgImage) return awImgCache;
+  var iw=bgImage.width, ih=bgImage.height;
+  var MAXDIM=2000;   // 精度優先で解像度を上げる(細い壁も拾えるように)
+  var s=Math.min(1, MAXDIM/Math.max(iw,ih));
+  var w=Math.max(1,Math.round(iw*s)), h=Math.max(1,Math.round(ih*s));
+  var off=document.createElement('canvas'); off.width=w; off.height=h;
+  var octx=off.getContext('2d',{willReadFrequently:true});
+  octx.drawImage(bgImage,0,0,w,h);
+  try{
+    awImgCache={img:bgImage, data:octx.getImageData(0,0,w,h).data, w:w, h:h, s:s};
+  }catch(err){
+    console.error('画像の読み取りに失敗:',err);
+    return null;
+  }
+  return awImgCache;
+}
+
+/* 大津の二値化: 明度ヒストグラムから最適なしきい値を自動で決める */
+function autoThresholdOtsu(){
+  if(!bgImage) return;
+  var im=getBgAnalysisImage(); if(!im) return;
+  var maxSat=+document.getElementById('awSat').value;
+  var hist=new Float64Array(256), total=0;
+  var d=im.data;
+  for(var i=0,p=0;i<im.w*im.h;i++,p+=4){
+    if(d[p+3]<128) continue;
+    var mx=Math.max(d[p],d[p+1],d[p+2]), mn=Math.min(d[p],d[p+1],d[p+2]);
+    if(mx-mn>maxSat) continue;              // 色みの強い画素は対象外
+    var lum=(0.299*d[p]+0.587*d[p+1]+0.114*d[p+2])|0;
+    hist[lum]++; total++;
+  }
+  if(total===0) return;
+  var sum=0; for(var t=0;t<256;t++) sum+=t*hist[t];
+  var sumB=0, wB=0, best=110, maxVar=-1;
+  for(var t2=0;t2<256;t2++){
+    wB+=hist[t2]; if(wB===0) continue;
+    var wF=total-wB; if(wF<=0) break;
+    sumB+=t2*hist[t2];
+    var mB=sumB/wB, mF=(sum-sumB)/wF;
+    var v=wB*wF*(mB-mF)*(mB-mF);
+    if(v>maxVar){ maxVar=v; best=t2; }
+  }
+  document.getElementById('awThreshold').value=best;
+  document.getElementById('awThresholdLabel').textContent=best;
+  runAutoWall();
+}
+
+/* 本体: 背景画像を解析して壁の線分(ワールド座標)を返す */
+function detectWallsFromBg(){
+  var threshold = +document.getElementById('awThreshold').value;
+  var maxSat    = +document.getElementById('awSat').value;
+  var minThM    = +document.getElementById('awMinTh').value;
+  var maxThM    = +document.getElementById('awMaxTh').value;
+  var minLenM   = +document.getElementById('awMinLen').value;
+
+  var im=getBgAnalysisImage(); if(!im) return [];
+  var d=im.data, w=im.w, h=im.h, s=im.s;
+
+  /* 二値化: 「暗い」かつ「色みが弱い(無彩色)」= 壁候補
+     間取り図の壁は黒〜グレー。茶色の建具や青の水回りは彩度が高いのでここで落ちる。 */
+  var dark=new Uint8Array(w*h);
+  for(var i=0,p=0;i<w*h;i++,p+=4){
+    if(d[p+3]<128) continue;
+    var mx=Math.max(d[p],d[p+1],d[p+2]), mn=Math.min(d[p],d[p+1],d[p+2]);
+    if(mx-mn>maxSat) continue;
+    var lum=0.299*d[p]+0.587*d[p+1]+0.114*d[p+2];
+    if(lum<threshold) dark[i]=1;
+  }
+
+  /* 解析画像の 1px が何メートルか
+     ワールド長 = nativePx * bgScale, nativePx = smallPx / s, メートル = ワールド長 / BASE_SCALE */
+  var mPerPx = (1/s)*bgScale/BASE_SCALE;
+  if(!(mPerPx>0)) return [];
+  var minThPx  = Math.max(1, minThM/mPerPx);
+  var maxThPx  = Math.max(minThPx+1, maxThM/mPerPx);
+  var minLenPx = Math.max(3, minLenM/mPerPx);
+
+  /* 抽出範囲(ワールド)→ 解析画像px */
+  var rx1=0, ry1=0, rx2=w, ry2=h;
+  if(awRegion){
+    var ax=(Math.min(awRegion.x1,awRegion.x2)-bgX)/bgScale*s;
+    var ay=(Math.min(awRegion.y1,awRegion.y2)-bgY)/bgScale*s;
+    var bx=(Math.max(awRegion.x1,awRegion.x2)-bgX)/bgScale*s;
+    var by=(Math.max(awRegion.y1,awRegion.y2)-bgY)/bgScale*s;
+    rx1=Math.max(0,Math.floor(ax)); ry1=Math.max(0,Math.floor(ay));
+    rx2=Math.min(w,Math.ceil(bx));  ry2=Math.min(h,Math.ceil(by));
+    if(rx2-rx1<3 || ry2-ry1<3) return [];
+  }
+
+  var segs=[];
+  collectWallRuns(dark,w,rx1,ry1,rx2,ry2,minThPx,maxThPx,minLenPx,true,segs);
+  collectWallRuns(dark,w,rx1,ry1,rx2,ry2,minThPx,maxThPx,minLenPx,false,segs);
+  /* 同じ壁が微妙にズレて複数本になるのを、1本に揃えて統合 */
+  segs=alignWallSegments(segs, Math.max(2, minThPx*0.9));
+  /* 交差部で壁が数px足りないので、端を相手の壁に吸着させて角を閉じる */
+  snapWallJunctions(segs, maxThPx*1.3);
+
+  /* 解析px → ワールド座標 */
+  return segs.map(function(g){
+    return {
+      x1: bgX+(g.x1/s)*bgScale, y1: bgY+(g.y1/s)*bgScale,
+      x2: bgX+(g.x2/s)*bgScale, y2: bgY+(g.y2/s)*bgScale
+    };
+  });
+}
+
+/* 同一直線上にあるはずの線分を1本に揃えて統合する。
+   走査時の中心追従でわずかにズレたもの、途中で切れたものをまとめる。 */
+function alignWallSegments(segs, tol){
+  var hs=[], vs=[];
+  segs.forEach(function(s){
+    if(s.y1===s.y2) hs.push(s);
+    else if(s.x1===s.x2) vs.push(s);
+  });
+  return alignOneAxis(hs,true,tol).concat(alignOneAxis(vs,false,tol));
+}
+function alignOneAxis(list, horizontal, tol){
+  if(list.length===0) return [];
+  var key=function(s){ return horizontal ? s.y1 : s.x1; };
+  list.sort(function(a,b){ return key(a)-key(b); });
+  /* 直交座標が近いものをクラスタに(横壁ならyが近いもの同士) */
+  var groups=[], cur=[list[0]];
+  for(var i=1;i<list.length;i++){
+    if(Math.abs(key(list[i])-key(cur[0]))<=tol) cur.push(list[i]);
+    else { groups.push(cur); cur=[list[i]]; }
+  }
+  groups.push(cur);
+
+  var res=[];
+  groups.forEach(function(g){
+    /* クラスタの平均位置に揃える */
+    var m=0; g.forEach(function(s){ m+=key(s); }); m/=g.length;
+    /* 同じ直線上で、重なる/ごく近い区間をつなぐ(本物の開口は残る) */
+    var spans=g.map(function(s){
+      var a=horizontal?Math.min(s.x1,s.x2):Math.min(s.y1,s.y2);
+      var b=horizontal?Math.max(s.x1,s.x2):Math.max(s.y1,s.y2);
+      return {a:a,b:b};
+    }).sort(function(p,q){ return p.a-q.a; });
+    var merged=[];
+    spans.forEach(function(sp){
+      var last=merged[merged.length-1];
+      if(last && sp.a<=last.b+tol) last.b=Math.max(last.b,sp.b);
+      else merged.push({a:sp.a,b:sp.b});
+    });
+    merged.forEach(function(sp){
+      if(horizontal) res.push({x1:sp.a,y1:m,   x2:sp.b,y2:m});
+      else           res.push({x1:m,   y1:sp.a,x2:m,   y2:sp.b});
+    });
+  });
+  return res;
+}
+
+/* 交差部の処理: 横壁の端が縦壁の近くにあれば、その縦壁の中心まで伸ばす(逆も同様)。
+   直交壁の位置ではランが長くなって拾えず、角に隙間ができるのを埋める。 */
+function snapWallJunctions(segs, tol){
+  var hs=segs.filter(function(s){return s.y1===s.y2;});
+  var vs=segs.filter(function(s){return s.x1===s.x2;});
+  hs.forEach(function(hh){
+    vs.forEach(function(vv){
+      var vy1=Math.min(vv.y1,vv.y2), vy2=Math.max(vv.y1,vv.y2);
+      if(hh.y1<vy1-tol || hh.y1>vy2+tol) return;      // 縦壁の範囲外
+      if(Math.abs(vv.x1-hh.x1)<=tol) hh.x1=vv.x1;
+      if(Math.abs(vv.x1-hh.x2)<=tol) hh.x2=vv.x1;
+    });
+  });
+  vs.forEach(function(vv){
+    hs.forEach(function(hh){
+      var hx1=Math.min(hh.x1,hh.x2), hx2=Math.max(hh.x1,hh.x2);
+      if(vv.x1<hx1-tol || vv.x1>hx2+tol) return;      // 横壁の範囲外
+      if(Math.abs(hh.y1-vv.y1)<=tol) vv.y1=hh.y1;
+      if(Math.abs(hh.y1-vv.y2)<=tol) vv.y2=hh.y1;
+    });
+  });
+}
+
+/* 走査してラン(壁の断面)を拾い、直交方向につないで線分にする
+   horizontal=true → 横向きの壁(各列の縦ランを見て、x方向につなぐ) */
+function collectWallRuns(dark,w,rx1,ry1,rx2,ry2,minTh,maxTh,minLen,horizontal,out){
+  var A1=horizontal?rx1:ry1, A2=horizontal?rx2:ry2;   // つなぐ方向
+  var B1=horizontal?ry1:rx1, B2=horizontal?ry2:rx2;   // ラン方向
+  function at(a,b){ return horizontal ? dark[b*w+a] : dark[a*w+b]; }
+
+  /* 交差点では直交壁のせいでランが長くなり途切れる。
+     その隙間(≒相手の壁厚)は許容してつなぎ続ける。
+     一方、ドアなどの本当の開口はこれより広いので、ちゃんと分割される。 */
+  var gapTol=Math.ceil(maxTh*1.5)+2;
+  var tol=Math.max(2, minTh*0.8);   // 中心のブレ許容
+  var open=[];
+
+  function finish(sg){
+    var len=sg.a2-sg.a1+1;
+    if(len<minLen) return;
+    if(horizontal) out.push({x1:sg.a1,y1:sg.c,x2:sg.a2,y2:sg.c});
+    else           out.push({x1:sg.c ,y1:sg.a1,x2:sg.c ,y2:sg.a2});
+  }
+
+  for(var a=A1;a<A2;a++){
+    /* この列(行)で、厚みが条件に合うランの中心を集める */
+    var runs=[], b=B1;
+    while(b<B2){
+      if(at(a,b)){
+        var st=b;
+        while(b<B2 && at(a,b)) b++;
+        var len=b-st;
+        if(len>=minTh && len<=maxTh) runs.push((st+b)/2);
+      } else b++;
+    }
+    var used=new Array(runs.length).fill(false);
+    /* 既存の線分に繋げられるか */
+    for(var k=open.length-1;k>=0;k--){
+      var sg=open[k], best=-1, bestD=tol;
+      for(var r=0;r<runs.length;r++){
+        if(used[r]) continue;
+        var dd=Math.abs(runs[r]-sg.c);
+        if(dd<bestD){ bestD=dd; best=r; }
+      }
+      if(best>=0){
+        used[best]=true;
+        sg.c=sg.c*0.75+runs[best]*0.25;   // 中心を追従
+        sg.a2=a; sg.gap=0;
+      } else {
+        sg.gap++;
+        if(sg.gap>gapTol){ finish(sg); open.splice(k,1); }
+      }
+    }
+    /* 余ったランは新しい線分の始まり */
+    for(var r2=0;r2<runs.length;r2++){
+      if(!used[r2]) open.push({c:runs[r2], a1:a, a2:a, gap:0});
+    }
+  }
+  open.forEach(finish);
+}
+
+/* 抽出パラメータの操作 → 少し待ってから自動で再検出 */
+var awTimer=null;
+function scheduleAutoWall(){
+  if(mode!=='autowall') return;
+  if(awTimer) clearTimeout(awTimer);
+  awTimer=setTimeout(runAutoWall,180);
+}
+window.addEventListener('load',function(){
+  var th=document.getElementById('awThreshold');
+  if(th){
+    th.addEventListener('input',function(){
+      document.getElementById('awThresholdLabel').textContent=this.value;
+      scheduleAutoWall();
+    });
+  }
+  var rft=document.getElementById('rfThreshold');
+  if(rft) rft.addEventListener('input',function(){
+    document.getElementById('rfThresholdLabel').textContent=this.value;
+  });
+  var rfs=document.getElementById('rfSat');
+  if(rfs) rfs.addEventListener('input',function(){
+    document.getElementById('rfSatLabel').textContent=this.value;
+  });
+  var sat=document.getElementById('awSat');
+  if(sat){
+    sat.addEventListener('input',function(){
+      document.getElementById('awSatLabel').textContent=this.value;
+      scheduleAutoWall();
+    });
+  }
+  ['awMinTh','awMaxTh','awMinLen'].forEach(function(id){
+    var el=document.getElementById(id);
+    if(el) el.addEventListener('input',scheduleAutoWall);
+  });
+});
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   部屋の自動取得(フラッドフィル)
+   壁で囲まれた白い領域 = 部屋。内側をクリックして塗り広げ、
+   その輪郭をポリゴンにして rooms[] に入れる。
+   ドアの開口から色が漏れるので、先にモルフォロジー closing
+   (膨張→収縮)で開口だけを塞いでから塗るのがキモ。
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+var roomFillPreview=[];   // 確定前の部屋 [{verts:[{x,y}..]}]
+var rfCache=null;
+
+/* 二値化 + closing した「壁マスク」を作る(パラメータが同じならキャッシュ) */
+function buildWallMaskForFill(){
+  var im=getBgAnalysisImage(); if(!im) return null;
+  var threshold=+document.getElementById('rfThreshold').value;
+  var maxSat=+document.getElementById('rfSat').value;
+  var closeM=+document.getElementById('rfClose').value;
+  var key=[im.w,im.h,threshold,maxSat,closeM,bgScale].join('|');
+  if(rfCache && rfCache.key===key) return rfCache;
+
+  var w=im.w, h=im.h, d=im.data;
+  var wall=new Uint8Array(w*h);
+  for(var i=0,p=0;i<w*h;i++,p+=4){
+    if(d[p+3]<128) continue;
+    var mx=Math.max(d[p],d[p+1],d[p+2]), mn=Math.min(d[p],d[p+1],d[p+2]);
+    if(mx-mn>maxSat) continue;                       // 色みが強い = 建具・家具
+    var lum=0.299*d[p]+0.587*d[p+1]+0.114*d[p+2];
+    if(lum<threshold) wall[i]=1;
+  }
+  var mPerPx=(1/im.s)*bgScale/BASE_SCALE;
+  /* closing: 膨張→収縮。2N までの隙間(ドア開口)が塞がり、壁の厚みは元に戻る */
+  var N=Math.max(0, Math.round((closeM/2)/mPerPx));
+  if(N>0){
+    wall=dilateBin(wall,w,h,N);
+    wall=erodeBin(wall,w,h,N);
+  }
+  rfCache={key:key, wall:wall, w:w, h:h, s:im.s, mPerPx:mPerPx};
+  return rfCache;
+}
+
+/* 二値膨張(正方形の構造要素)。横→縦の分離実装 + 移動窓で O(w*h) */
+function dilateBin(src,w,h,r){
+  var tmp=new Uint8Array(w*h), out=new Uint8Array(w*h);
+  for(var y=0;y<h;y++){
+    var base=y*w, cnt=0;
+    for(var x=0;x<=Math.min(r,w-1);x++) cnt+=src[base+x];
+    for(var x2=0;x2<w;x2++){
+      tmp[base+x2]=cnt>0?1:0;
+      var add=x2+r+1, rem=x2-r;
+      if(add<w) cnt+=src[base+add];
+      if(rem>=0) cnt-=src[base+rem];
+    }
+  }
+  for(var x3=0;x3<w;x3++){
+    var c2=0;
+    for(var y2=0;y2<=Math.min(r,h-1);y2++) c2+=tmp[y2*w+x3];
+    for(var y3=0;y3<h;y3++){
+      out[y3*w+x3]=c2>0?1:0;
+      var add2=y3+r+1, rem2=y3-r;
+      if(add2<h) c2+=tmp[add2*w+x3];
+      if(rem2>=0) c2-=tmp[rem2*w+x3];
+    }
+  }
+  return out;
+}
+
+/* 二値収縮。窓が全部1のときだけ1(画像の外は0扱い) */
+function erodeBin(src,w,h,r){
+  var tmp=new Uint8Array(w*h), out=new Uint8Array(w*h);
+  for(var y=0;y<h;y++){
+    var base=y*w, cnt=0;
+    for(var x=0;x<=Math.min(r,w-1);x++) cnt+=src[base+x];
+    for(var x2=0;x2<w;x2++){
+      var x0=Math.max(0,x2-r), x1=Math.min(w-1,x2+r);
+      tmp[base+x2]=(cnt===(x1-x0+1))?1:0;
+      var add=x2+r+1, rem=x2-r;
+      if(add<w) cnt+=src[base+add];
+      if(rem>=0) cnt-=src[base+rem];
+    }
+  }
+  for(var x3=0;x3<w;x3++){
+    var c2=0;
+    for(var y2=0;y2<=Math.min(r,h-1);y2++) c2+=tmp[y2*w+x3];
+    for(var y3=0;y3<h;y3++){
+      var y0=Math.max(0,y3-r), y1=Math.min(h-1,y3+r);
+      out[y3*w+x3]=(c2===(y1-y0+1))?1:0;
+      var add2=y3+r+1, rem2=y3-r;
+      if(add2<h) c2+=tmp[add2*w+x3];
+      if(rem2>=0) c2-=tmp[rem2*w+x3];
+    }
+  }
+  return out;
+}
+
+/* クリック地点から塗り広げる(4近傍) */
+function floodFillFrom(cache,sx,sy){
+  var w=cache.w,h=cache.h,wall=cache.wall;
+  if(sx<0||sy<0||sx>=w||sy>=h) return null;
+  var start=sy*w+sx;
+  if(wall[start]) return {onWall:true};
+  var region=new Uint8Array(w*h);
+  var stack=[start]; region[start]=1;
+  var count=0;
+  while(stack.length){
+    var idx=stack.pop(); count++;
+    var x=idx%w, y=(idx/w)|0;
+    if(x>0    && !wall[idx-1] && !region[idx-1]){region[idx-1]=1;stack.push(idx-1);}
+    if(x<w-1  && !wall[idx+1] && !region[idx+1]){region[idx+1]=1;stack.push(idx+1);}
+    if(y>0    && !wall[idx-w] && !region[idx-w]){region[idx-w]=1;stack.push(idx-w);}
+    if(y<h-1  && !wall[idx+w] && !region[idx+w]){region[idx+w]=1;stack.push(idx+w);}
+  }
+  return {region:region, count:count};
+}
+
+/* 領域の輪郭を追跡(Moore近傍・時計回り) */
+function traceContour(mask,w,h){
+  var start=-1;
+  for(var i=0;i<w*h;i++){ if(mask[i]){start=i;break;} }
+  if(start<0) return [];
+  var sx=start%w, sy=(start/w)|0;
+  var dx=[-1,0,1,1,1,0,-1,-1], dy=[-1,-1,-1,0,1,1,1,0];
+  /* 走査で見つけた開始画素の左隣は必ず背景。そこを backtrack にするため、
+     「東へ進んで来た」ことにして dir=3 で始める((dir+4)&7 = 西 = 左隣) */
+  var pts=[], cx=sx, cy=sy, dir=3, guard=0, maxIter=w*h*2;
+  do{
+    pts.push({x:cx,y:cy});
+    var found=false, startDir=(dir+5)&7;
+    for(var k=0;k<8;k++){
+      var nd=(startDir+k)&7;
+      var nx=cx+dx[nd], ny=cy+dy[nd];
+      if(nx<0||ny<0||nx>=w||ny>=h) continue;
+      if(mask[ny*w+nx]){ cx=nx; cy=ny; dir=nd; found=true; break; }
+    }
+    if(!found) break;
+    guard++;
+  } while((cx!==sx||cy!==sy) && guard<maxIter);
+  return pts;
+}
+
+/* Douglas-Peucker で頂点を間引く */
+function simplifyDP(pts,eps){
+  if(pts.length<3) return pts.slice();
+  function dist(p,a,b){
+    var dx=b.x-a.x, dy=b.y-a.y, l2=dx*dx+dy*dy;
+    if(l2<1e-9) return Math.hypot(p.x-a.x,p.y-a.y);
+    var t=Math.max(0,Math.min(1,((p.x-a.x)*dx+(p.y-a.y)*dy)/l2));
+    return Math.hypot(p.x-(a.x+t*dx), p.y-(a.y+t*dy));
+  }
+  function rec(s,e){
+    var maxD=0, idx=-1;
+    for(var i=s+1;i<e;i++){
+      var d0=dist(pts[i],pts[s],pts[e]);
+      if(d0>maxD){maxD=d0;idx=i;}
+    }
+    if(maxD>eps && idx>0){
+      return rec(s,idx).slice(0,-1).concat(rec(idx,e));
+    }
+    return [pts[s],pts[e]];
+  }
+  return rec(0,pts.length-1);
+}
+
+/* 各辺を水平/垂直に吸着させて直角に整える */
+function orthogonalize(verts){
+  var n=verts.length;
+  if(n<4) return verts;
+  var out=verts.map(function(v){return{x:v.x,y:v.y};});
+  for(var i=0;i<n;i++){
+    var a=out[i], b=out[(i+1)%n];
+    if(Math.abs(b.x-a.x) >= Math.abs(b.y-a.y)){
+      var my=(a.y+b.y)/2; a.y=my; b.y=my;      // 横辺 → y を揃える
+    } else {
+      var mx=(a.x+b.x)/2; a.x=mx; b.x=mx;      // 縦辺 → x を揃える
+    }
+  }
+  /* ほぼ同じ点になった頂点を間引く */
+  var res=[];
+  for(var j=0;j<out.length;j++){
+    var p=out[j], q=res[res.length-1];
+    if(!q || Math.hypot(p.x-q.x,p.y-q.y)>1) res.push(p);
+  }
+  if(res.length>2){
+    var f=res[0], l=res[res.length-1];
+    if(Math.hypot(f.x-l.x,f.y-l.y)<=1) res.pop();
+  }
+  return res;
+}
+
+/* クリックされたワールド座標から部屋を1つ取得してプレビューに積む */
+function pickRoomAt(wx,wy){
+  var cache=buildWallMaskForFill();
+  if(!cache){ document.getElementById('status').textContent='背景写真を読み込んでください'; return; }
+  /* ワールド → 解析画像px */
+  var px=Math.round((wx-bgX)/bgScale*cache.s);
+  var py=Math.round((wy-bgY)/bgScale*cache.s);
+  var hint=document.getElementById('rfHint');
+
+  var r=floodFillFrom(cache,px,py);
+  if(!r){ if(hint) hint.textContent='画像の外です'; return; }
+  if(r.onWall){ if(hint) hint.textContent='壁の上です。部屋の内側をクリックしてください'; return; }
+
+  var total=cache.w*cache.h;
+  if(r.count>total*0.45){
+    if(hint) hint.textContent='開口から漏れました。「開口を塞ぐ」を大きくしてください';
+    document.getElementById('status').textContent='塗りが外に漏れています。「開口を塞ぐ」の値を上げて再試行してください';
+    return;
+  }
+  if(r.count<40){ if(hint) hint.textContent='領域が小さすぎます'; return; }
+
+  /* 壁の中心まで広げて、隣の部屋と辺を共有させる */
+  var region=r.region;
+  var offM=+document.getElementById('rfOffset').value;
+  var K=Math.max(0,Math.round(offM/cache.mPerPx));
+  if(K>0) region=dilateBin(region,cache.w,cache.h,K);
+
+  var contour=traceContour(region,cache.w,cache.h);
+  if(contour.length<8){ if(hint) hint.textContent='輪郭が取れませんでした'; return; }
+
+  /* 間引き → 直角化 */
+  var eps=Math.max(1.5, 0.04/cache.mPerPx);      // 約4cm相当
+  var simp=simplifyDP(contour,eps);
+  if(document.getElementById('rfOrtho').checked) simp=orthogonalize(simp);
+  if(simp.length<3){ if(hint) hint.textContent='輪郭が単純すぎます'; return; }
+
+  /* 解析px → ワールド座標 */
+  var verts=simp.map(function(p){
+    return { x: bgX+(p.x/cache.s)*bgScale, y: bgY+(p.y/cache.s)*bgScale };
+  });
+  var areaM=(r.count*cache.mPerPx*cache.mPerPx);
+  roomFillPreview.push({verts:verts, area:areaM});
+  if(hint) hint.textContent=roomFillPreview.length+'部屋を選択中(約'+areaM.toFixed(1)+'㎡ / '+(areaM/1.62).toFixed(1)+'帖)';
+  document.getElementById('status').textContent='部屋を取得しました(約'+areaM.toFixed(1)+'㎡)。続けてクリック、または「✓ 追加」';
+  draw();
+}
+
+/* プレビューを実際の部屋として確定 */
+function commitRoomFill(){
+  if(roomFillPreview.length===0){
+    document.getElementById('status').textContent='追加する部屋がありません';
+    return;
+  }
+  var names=['LDK','寝室','子供部屋','和室','洗面所','浴室','パントリー','ホール'];
+  roomFillPreview.forEach(function(rp){
+    var minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+    rp.verts.forEach(function(v){
+      minX=Math.min(minX,v.x); minY=Math.min(minY,v.y);
+      maxX=Math.max(maxX,v.x); maxY=Math.max(maxY,v.y);
+    });
+    rooms.push({
+      id:roomCount++, name:names[rooms.length%names.length],
+      wx:minX, wy:minY, ww:maxX-minX, wh:maxY-minY,
+      vertices:rp.verts.map(function(v){return{x:v.x,y:v.y};}),
+      color:COLORS[rooms.length%COLORS.length], openings:[], groupId:null
+    });
+  });
+  var n=roomFillPreview.length;
+  roomFillPreview=[];
+  draw(); rebuild3D(); renderRoomList();
+  document.getElementById('status').textContent=n+'部屋を追加しました。名前は一覧から変更できます';
+  var hint=document.getElementById('rfHint');
+  if(hint) hint.textContent='追加しました / 続けて別の部屋もクリックできます';
+}
+
+function clearRoomFill(){
+  roomFillPreview=[];
+  draw();
+  var hint=document.getElementById('rfHint');
+  if(hint) hint.textContent='部屋の内側をクリックしてください';
+}
+
 /* ━━━ 独立壁削除 ━━━ */
 function removeWall(idx){
   if(!walls[idx]) return;
@@ -2318,7 +3069,9 @@ function applyGlobalScale(s){
     }
     /* 開口の幅もスケール(物理サイズ) */
     if(r.openings){
-      r.openings.forEach(function(o){ if(o.width) o.width *= s; if(o.height) o.height *= s; });
+      /* 幅だけスケール。高さは天井高(2.4m固定)との関係が壊れ、
+         ドア上のまぐさが消えて天井まで繋がってしまうため変更しない */
+      r.openings.forEach(function(o){ if(o.width) o.width *= s; });
     }
   });
   /* 壁 */
